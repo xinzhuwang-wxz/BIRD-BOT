@@ -28,6 +28,10 @@ _Avoid_: phase 2、异步阶段
 深度阶段产出的自然观察叙事（行为理解 + 当地稀有度解释 + 短文）。由领域 **Skill 方法论**（散文、无强制力）引导多模态 LLM（经 Model Router、只收 3–8 精选帧 + 结构化证据）生成；**输出 schema/工具白名单/降精度等硬契约在 Tool/Workflow 代码闸**，不在 Skill。
 _Avoid_: 描述、文案
 
+**日报 (Daily Digest)**:
+按时区定时聚合当天某用户/设备的 events → 生成日报 → 经 outbox 投递（at-least-once + 按 `digest:{tenant}:{date}` 幂等）。内核 Cron **仅作触发器**，应用层自接 `on_job` + `start()`（补 D5 哑存储缺口）；聚合/状态走 Postgres，不进 Cron 单机 JSON（[ADR-0002](docs/adr/0002-workflow-on-postgres.md)）。
+_Avoid_: 报表、推送
+
 **租户 (Tenant)**:
 隔离、计费、配额与数据驻留的**顶层边界**。通常是集成 BirdBot 的 IoT 平台/品牌方；D2C 路径下也可能是终端用户账户——具体身份待上市策略定，隔离模型对两者兼容。
 _Avoid_: 客户、账号

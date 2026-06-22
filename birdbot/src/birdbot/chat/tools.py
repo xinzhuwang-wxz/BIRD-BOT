@@ -30,8 +30,9 @@ class DeviceHistoryTool(Tool):
     The device is implicit (this request's device) — never an LLM parameter.
     """
 
-    def __init__(self, history: Mapping[str, Any]) -> None:
+    def __init__(self, history: Mapping[str, Any], *, device_id: str | None = None) -> None:
         self._history = dict(history)
+        self._device_id = device_id  # bound per-request; never an LLM parameter
         self.calls: list[dict[str, Any]] = []
 
     @property
@@ -48,7 +49,7 @@ class DeviceHistoryTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str:
         species = kwargs.get("species", "")
-        self.calls.append({"species": species})
+        self.calls.append({"species": species, "device_id": self._device_id})
         return json.dumps(self._history.get(species, {"visits_30d": 0}))
 
 

@@ -36,10 +36,10 @@ async def main() -> None:
     api_base = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
     model = os.environ.get("LLM_MODEL", "deepseek-chat")
 
-    from birdbot.chat.tools import BirdContextTool, DeviceHistoryTool
+    from birdbot.chat.registry import build_nature_chat_registry
+    from birdbot.tenant.context import TenantEnvelope
 
     from nanobot.agent.loop import AgentLoop
-    from nanobot.agent.tools.registry import ToolRegistry
     from nanobot.bus.queue import MessageBus
     from nanobot.config.schema import Config
     from nanobot.providers.openai_compat_provider import OpenAICompatProvider
@@ -56,20 +56,24 @@ async def main() -> None:
         loop = AgentLoop(
             bus=MessageBus(), provider=provider, workspace=Path(workspace), model=model
         )
-        history = DeviceHistoryTool({"blue tit": {"visits_30d": 8}, "robin": {"visits_30d": 1}})
-        # region is bound deterministically here (would come from the device's
-        # post-degradation location), not left for the LLM to fill.
-        context = BirdContextTool({"blue tit": "common", "robin": "rare"}, region="US-CA")
-        registry = ToolRegistry()
-        registry.register(history)
-        registry.register(context)
-
+        # One per-request, tenant-scoped registry: device bound from the envelope, region
+        # bound from the device's (post-degradation) location — neither is LLM-settable
+        # (S13 / 方案 §176).
+        envelope = TenantEnvelope(tenant_id="dev", user_id="dev", device_id="dev")
+        registry = build_nature_chat_registry(
+            envelope=envelope,
+            region="US-CA",
+            history={"blue tit": {"visits_30d": 8}, "robin": {"visits_30d": 1}},
+            rarity={"blue tit": "common", "robin": "rare"},
+        )
         result = await loop.process_direct(
             "A blue tit just visited my feeder — is it a regular here, "
             "and is it special to see one?",
             tools=registry,
-            session_key="tenant:dev:user:dev:device:dev",
+            session_key=envelope.session_key,
         )
+        history = registry.get("device_history")
+        context = registry.get("bird_context")
 
     print(f"=== PROVIDER: {provider_name} / {model} ===")
     print("=== TOOLS THE LLM AUTONOMOUSLY CALLED ===")

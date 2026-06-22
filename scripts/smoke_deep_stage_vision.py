@@ -37,9 +37,9 @@ async def main() -> None:
     model = os.environ.get("LLM_MODEL", "doubao-seed-2-0-pro-260215")
 
     import httpx
+    from birdbot.deep.llm import OpenAICompatStoryLLM
     from birdbot.deep.story import STORY_SCHEMA, STORY_SKILL
     from birdbot.router.validate import validate_structured_output
-    from json_repair import repair_json
     from openai import AsyncOpenAI
 
     image_path = os.environ.get("BIRD_IMAGE_PATH")
@@ -71,27 +71,12 @@ async def main() -> None:
         "Return ONLY a JSON object with keys: behavior, rarity_narrative, story."
     )
 
+    # Use the production StoryLLM (S12): OpenAI-compatible, vision-capable.
     client = AsyncOpenAI(api_key=api_key, base_url=api_base)
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ],
-            }
-        ],
-        response_format={"type": "json_object"},
-        max_tokens=800,
+    llm = OpenAICompatStoryLLM(client=client, model=model)
+    story = await llm.generate(
+        prompt=prompt, frames=[data_url], schema=STORY_SCHEMA, model=model
     )
-
-    raw = resp.choices[0].message.content or ""
-    try:
-        story = json.loads(raw)
-    except json.JSONDecodeError:
-        story = json.loads(repair_json(raw))
 
     errors = validate_structured_output(story, STORY_SCHEMA)
     print(f"=== MODEL: {model} (vision) ===")

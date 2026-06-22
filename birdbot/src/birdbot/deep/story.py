@@ -46,13 +46,21 @@ class StoryLLM(Protocol):
 
 
 def build_story_prompt(snapshot: Mapping[str, Any]) -> str:
-    """Compose the deep-stage prompt: Skill methodology + structured evidence."""
+    """Compose the deep-stage prompt: Skill methodology + structured evidence.
+
+    Region is injected deterministically (from the device location) and the model is told
+    not to infer it (S13); the explicit JSON instruction also satisfies providers whose
+    json mode requires the word "json" in the prompt.
+    """
     candidates = snapshot.get("candidates", [])
     rarity = snapshot.get("rarity", {})
+    region = snapshot.get("region")
     evidence = snapshot.get("evidence", {})
     return (
         f"{STORY_SKILL}\n"
+        f"Region (given, do not infer): {region}\n"
         f"Candidates: {candidates}\n"
         f"Local rarity: {rarity}\n"
         f"Evidence: {evidence}\n"
+        "Return ONLY a JSON object with keys: behavior, rarity_narrative, story.\n"
     )

@@ -68,6 +68,18 @@ _Avoid_: 消息队列、MQ（泛指时）
 给识别适配层做**物种分类**的专用视觉模型/API（第三方可商用 vision API、SpeciesNet 或自建分类器）。与推理/叙事用的 LLM 是不同的层。
 _Avoid_: 模型、provider（本项目「模型 / provider」专指 LLM 层）
 
+**置信度校准 / Calibrator**:
+对端侧 Top-K 的过自信 softmax 做**温度缩放**（按模型/物种粒度学 T）：**先校准再设升级阈值**（[ADR-0008](docs/adr/0008-recognition-backend.md)）。神经网络分数系统性过自信，不校准直接设阈值会失效。
+_Avoid_: 归一化、置信度（不加限定时）
+
+**识别适配层 / Recognition Adapter**:
+快速阶段消费 Top-K 的四段（SpeciesNet 范式）：校准 → geo/temporal 重排 → 决策（接受 / **taxonomic rollup** 回退到属/科 / **升级**触发付费后端）→ 输出候选+证据+决策。read_only。
+_Avoid_: 分类器（那是识别后端）
+
+**帧评分 / Frame Scorer**:
+从帧序列选**最佳帧**（NIMA 美学 + BRISQUE/锐度/运动模糊）：特征由普通程序/专业模型算、本层组合打分；缺媒体降级为无最佳帧。LLM 只收 3–8 张精选帧。
+_Avoid_: 选帧、截图
+
 ### 能力分层（idea §4 四分法）
 
 **Agent**:

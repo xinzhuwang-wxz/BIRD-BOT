@@ -121,6 +121,10 @@ _Avoid_: 日志、监控（泛指时）
 由**代码固定**的主链路控制流（快/慢拆分、幂等、超时、有限重试、日报、回调），**不交给 LLM 决定每一步**。
 _Avoid_: pipeline（泛指时）、流程
 
+**开放交互层 / Nature Chat**:
+与确定性主链路（Workflow）相对的开放对话层（[ADR-0011](docs/adr/0011-agent-boundary-provider-backend.md)）：用户自由提问（「它是常客吗」「为什么此时出现」），LLM 经 nanobot **agent loop**（`process_direct` 多轮 + 工具集 + 会话记忆 + subagent）**自主选工具**多步作答。MVP 后置，spike 已验证机制。与主链路**共用 nanobot 基底、两种用法**。
+_Avoid_: 聊天、对话（泛指时）
+
 **Skill**:
 描述某项领域能力**方法论**的 Markdown 文档（何时用、需要什么输入、如何融合证据、输出结构）。**无强制力**——硬契约/工具白名单/输出 schema/隐私降精度的闸在 Tool 与 Workflow 代码里，不在 Skill。
 

@@ -52,6 +52,18 @@ _Avoid_: 权限、ACL
 默认隔离模型（[ADR-0004](docs/adr/0004-tenant-isolation-pool-bridge.md)）：全租户共享一套服务与库、按 `tenant_id` 隔离（pool），成本最优；架构预留 bridge（高合规/大客户退化为独立 schema 或独立向量 index + BYOK）。
 _Avoid_: 共享/独占（不加限定时）
 
+**可重入 step / durable execution**:
+Workflow Runtime 的执行单元（[ADR-0002](docs/adr/0002-workflow-on-postgres.md)）：步骤先 journal 再执行，输出落 `workflow_steps`；进程崩溃重启后已完成步骤**回放而非重跑**。每步 `start_to_close` 超时 + 有限重试（指数退避，区分可重试 429/5xx/超时 与不可重试 4xx/校验失败）。
+_Avoid_: task、job（泛指时）
+
+**幂等键 (Idempotency Key)**:
+`tenant+device+event_id` 派生的去重标识，贯穿 ingress（重复提交返回同一 job）与 workflow（同 `workflow_id` 步骤幂等回放），达成 exactly-once 业务效果。
+_Avoid_: 去重 ID、主键
+
+**transactional outbox**:
+解业务写与外部回调的双写不一致（[ADR-0002](docs/adr/0002-workflow-on-postgres.md)）：事件行与业务写**同事务**提交进 `outbox`，独立 relay **至少一次**投递、消费者按 `dedupe_key` 幂等去重。
+_Avoid_: 消息队列、MQ（泛指时）
+
 **识别后端 (Recognition Backend)**:
 给识别适配层做**物种分类**的专用视觉模型/API（第三方可商用 vision API、SpeciesNet 或自建分类器）。与推理/叙事用的 LLM 是不同的层。
 _Avoid_: 模型、provider（本项目「模型 / provider」专指 LLM 层）

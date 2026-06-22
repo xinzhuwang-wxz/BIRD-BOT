@@ -76,7 +76,9 @@ async def app_db():
     await _provision()
     admin = await asyncpg.connect(_ADMIN_DSN)
     try:
-        await admin.execute("TRUNCATE events")  # TRUNCATE is owner-level, bypasses RLS
+        # TRUNCATE is owner-level, bypasses RLS. IF EXISTS keeps it working across the
+        # migration history (tables appear in later migrations).
+        await admin.execute("TRUNCATE TABLE events, workflow_steps, outbox")
     finally:
         await admin.close()
     db = await Database.connect(_app_dsn())

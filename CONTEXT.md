@@ -80,6 +80,14 @@ _Avoid_: 分类器（那是识别后端）
 从帧序列选**最佳帧**（NIMA 美学 + BRISQUE/锐度/运动模糊）：特征由普通程序/专业模型算、本层组合打分；缺媒体降级为无最佳帧。LLM 只收 3–8 张精选帧。
 _Avoid_: 选帧、截图
 
+**Bird Context Service / 数据源模式**:
+当地鸟类上下文的唯一受治出口（[ADR-0005](docs/adr/0005-ebird-compliance-source-mode.md)）：持唯一 API key（不下发租户/设备）、按 region+date 缓存+限流、「来源×用途×授权」矩阵 + **商用拦截**（未授权前 eBird/iNat 不进付费路径）+ 强制署名。数据源模式 `auto|ebird-only|non-ebird-only` 显式可调试，当前模式与任何降级/熔断/额度耗尽**埋点可见、绝不静默**（[ADR-0006](docs/adr/0006-observability-first-class.md)）。
+_Avoid_: eBird 客户端（指代整体时）、数据源（不加限定）
+
+**稀有度标签 (Rarity Label)**:
+由当地频率映射的物种标签——常见 / 季节访客 / 近期罕见（COMMON/SEASONAL/RARE）。喂给 geo/temporal 重排与稀有度叙事；稀疏格点平滑，**别压没当地数据的真实罕见种**。
+_Avoid_: 频率（指标签时）
+
 ### 能力分层（idea §4 四分法）
 
 **Agent**:

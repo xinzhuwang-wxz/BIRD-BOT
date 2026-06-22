@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from birdbot.db.pool import Database
@@ -85,3 +86,18 @@ class EventStore:
                 "SELECT status FROM events WHERE job_id = $1::uuid", str(job_id)
             )
             return row["status"] if row else None
+
+    async def attach_fast_snapshot(
+        self, *, tenant_id: str, device_id: str, event_id: str, snapshot: dict[str, Any]
+    ) -> None:
+        """Merge the fast-stage snapshot into the event's payload (deep-stage input)."""
+        async with self._db.tenant_scope(tenant_id) as conn:
+            await conn.execute(
+                """
+                UPDATE events SET payload = payload || $3::jsonb
+                WHERE device_id = $1 AND event_id = $2
+                """,
+                device_id,
+                event_id,
+                json.dumps({"fast_stage": snapshot}),
+            )

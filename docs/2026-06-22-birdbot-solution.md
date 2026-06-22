@@ -75,7 +75,7 @@
 
 | 严重 | idea 问题 | 校正 |
 |---|---|---|
-| **高** | §5 自称「nanobot 作固定依赖、不 Fork」，但现实是**整包源码已 vendored 进仓库**（`nanobot/` 在根、包名 `nanobot-ai`、§9 自述「轻量版已复制」）——这就是事实 Fork | 二选一**写死纪律**：**(A)** 改为外部 pip 固定版本依赖、业务代码全部迁出 `nanobot/`、只靠 entry_points/Skills/Hook/config/MCP 扩展；**(B)** 承认为受控 vendor fork、放弃「跟进上游」承诺、建 patch+diff 流程。**不要两头都要。推荐 A。** |
+| **高** | §5 自称「nanobot 作固定依赖、不 Fork」，但现实是**整包源码已 vendored 进仓库**（`nanobot/` 在根、包名 `nanobot-ai`、§9 自述「轻量版已复制」）——这就是事实 Fork | 二选一**写死纪律**：**(A)** 改为外部 pip 固定版本依赖、业务代码全部迁出 `nanobot/`、只靠 entry_points/Skills/Hook/config/MCP 扩展；**(B)** 承认为受控 vendor fork、放弃「跟进上游」承诺、建 patch+diff 流程。**✅ 已定 B（受控 vendor fork），见 [ADR-0001](adr/0001-vendored-nanobot-fork.md)。** |
 | **高** | §8 把 eBird 当随取随用的上下文源，**未点明 BirdBot 是商业 SaaS → eBird API/数据/S&T/Macaulay 默认全禁商用，须先取 Cornell 书面许可** | 列为 **P0 阻断性合规门槛**：上线前邮件 `ebird@cornell.edu` 启动商业许可；未获许可前 eBird 仅内部原型；并行备 iNaturalist 公开记录 + taxonomy(免 key) + 缓存做降级 |
 | **高** | §4「围绕 nanobot Cron/Goal 实现 Workflow」——但 Cron 非执行引擎、Goal 存对话记忆 | Cron **仅作日报/聚合触发器**；真正的状态机/幂等/超时/重试/outbox **第一天就建在事务型 Postgres**；Goal 不承担可靠工作流职责 |
 | 中 | §1/§2 把 **OrniSense 当独立竞品**、Netvue/Birdfy 当并列三家 | 实为两大阵营：**Bird Buddy（Nature Intelligence）vs Birdfy（OrniSense 是其 AI 层，Netvue 是渠道线）**。差异化收敛到**跨品牌/跨 IoT 中立 + 本地稀有度叙事/证据融合质量**（最佳帧/日报/Story 已被竞品商品化，不是护城河） |
@@ -220,13 +220,13 @@
 
 | # | 决策 | 推荐 |
 |---|---|---|
-| K1 | nanobot 形态：vendored fork vs 外部固定依赖 | **A 外部固定依赖**，业务代码迁出 `nanobot/`，只靠 entry_points/Skills/Hook/config 扩展 |
-| K2 | Workflow 引擎：Cron+文件 vs Postgres 自建 vs Temporal | **B Postgres 状态表+outbox+可重入 step（DBOS-style）**；Cron 仅日报触发器 |
-| K3 | eBird 商业合规路径 | **并行 A（即发起 Cornell 洽谈）+ 备 B（iNat+taxonomy 降级）**，许可落定前按 C 约束付费路径 |
-| K4 | 多租户：pool vs bridge | **B 默认 pool + 预留 bridge**（高合规/大客户退化 silo） |
-| K5 | 商业升级识别后端 | 先用真实欧美场景**基准评测**再定，倾向 **A 第三方可商用 API** 起步 + **C SpeciesNet** 作参考/自训基线；**排除 iNat CV 模型** |
-| K6 | EU 数据模型目的地策略 | **B 默认仅 EU 端点或已签 DPA+SCC/DPF 美国端点**，路由层硬约束（合规结论交法务） |
-| K7 | ingress 形态 | **A+B**：快速阶段 HTTP 同步 `process_direct`；深度/高频走持久化队列（Redis/SQS）；**排除 C**（基座内存总线对外） |
+| K1 | nanobot 形态：vendored fork vs 外部固定依赖 | ✅**已定 B：受控 vendor fork**（[ADR-0001](adr/0001-vendored-nanobot-fork.md)）——优先应用层扩展、保留改内核自由、放弃自动跟进上游 |
+| K2 | Workflow 引擎：Cron+文件 vs Postgres 自建 vs Temporal | ✅**已定 B**（[ADR-0002](adr/0002-workflow-on-postgres.md)）：Postgres 状态表+outbox+可重入 step（DBOS 式）；Cron 仅日报触发器 |
+| K3 | eBird 商业合规路径 | ✅**已定**（[ADR-0005](adr/0005-ebird-compliance-source-mode.md)）：发起 Cornell 洽谈 + iNat 降级底座 + 数据源显式开关（`auto/ebird-only/non-ebird-only`，降级可见不静默）；许可前 eBird 不进付费路径。可观测性见 [ADR-0006](adr/0006-observability-first-class.md) |
+| K4 | 多租户：pool vs bridge | ✅**已定 B**（[ADR-0004](adr/0004-tenant-isolation-pool-bridge.md)）：默认 pool（RLS+namespace+配额+成本归因主动抵消四大代价），预留 bridge |
+| K5 | 商业升级识别后端 | ✅**已定**（[ADR-0008](adr/0008-recognition-backend.md)）：识别后端=专用 vision API（与 LLM 层分离），先用第三方可商用 API；基准评测后定型；SpeciesNet 作参考；排除 iNat CV；校准阈值门控 |
+| K6 | EU 数据模型目的地策略 | ✅**已定 B**（[ADR-0007](adr/0007-eu-data-routing.md)）：默认仅 EU 端点或已签 DPA+SCC/DPF 美国端点，注册表一等字段+硬约束，禁流向无充分性认定第三国（含中国模型）；法务确认细节 |
+| K7 | ingress 形态 | ✅**已定 A+B**（[ADR-0003](adr/0003-ingress-pattern.md)）：快速阶段 HTTP 同步 `process_direct`；深度/高频走持久化队列；排除内核内存总线；队列选型待 IoT 对接约束定 |
 
 ---
 

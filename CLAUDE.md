@@ -16,11 +16,12 @@
 
 仓库根的 `nanobot/` 是 **nanobot 的蒸馏轻量版（vendored）**，作为 Agent 内核（MIT）。BirdBot 领域代码是**独立应用层**。
 
-- 🚫 **不改 `nanobot/` 内核**（在里面改任何一行即事实 Fork）。只通过 **entry_points Tool 插件 / Skills / Hook / config / MCP** 扩展；领域代码不得落进 `nanobot/agent/tools/`。
+- 🟡 **`nanobot/` 是受控 vendor fork**（[ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）：**默认优先**用 entry_points Tool / Skills / Hook / config / MCP 在应用层扩展，领域代码放独立 `birdbot/` 包、不落进 `nanobot/agent/tools/`；**确需改内核**时改动要刻意、记录在案、维护与上游 diff（已放弃自动跟进上游）。
 - 🚫 **不用 `Nanobot.run`**（私有 hook swap，多租户并发会串扰）——用自建薄门面调 `process_direct`。
 - 🚫 关键业务/workflow 状态**不进对话记忆**（`session.metadata`）——落 Postgres。
 - 🚫 **租户隔离不靠 LLM**——靠 Postgres RLS + 向量 namespace + 确定性组件传递租户信封。
-- 🔴 **eBird/媒体商业授权是 P0 合规门**：未取得 Cornell 书面许可前，eBird 不进付费路径。
+- 🔴 **eBird/媒体商业授权是 P0 合规门**（[ADR-0005](docs/adr/0005-ebird-compliance-source-mode.md)）：未取得 Cornell 书面许可前 eBird 不进付费路径；数据源支持 `auto|ebird-only|non-ebird-only` 显式模式，降级**可见不静默**。
+- 📊 **可观测性/埋点是一等公民**（day-one，[ADR-0006](docs/adr/0006-observability-first-class.md)）：LLM/工具/外部 API 调用结构化日志带 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟`；hook 不静默吞错；降级/熔断/额度耗尽必须 surface。
 
 > 基座真实能力 vs 缺口、69 条工程债、7 项待定决策（K1–K7）见方案文档第 1/6 节。改动前先核对那里，别把基座「假设的能力」当真（如：无网络 ingress、无 BirdEvent 入口、Cron 非工作流引擎、tenant 原语为零）。
 

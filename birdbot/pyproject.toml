@@ -11,6 +11,7 @@ license = { text = "MIT" }
 dependencies = [
     "nanobot-ai",
     "asyncpg>=0.30,<1.0",   # async-native Postgres driver (ADR-0009)
+    "fastapi>=0.115,<1.0",  # HTTP ingress (ADR-0010); starlette/pydantic already present
 ]
 
 [project.optional-dependencies]

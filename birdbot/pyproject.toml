@@ -13,14 +13,16 @@ dependencies = [
     "asyncpg>=0.30,<1.0",   # async-native Postgres driver (ADR-0009)
     "fastapi>=0.115,<1.0",  # HTTP ingress (ADR-0010); starlette/pydantic already present
     "openai>=2.8.0",        # OpenAICompatStoryLLM (S12): vision + structured output
-    "httpx>=0.28.0,<1.0.0",         # HTTP context-source adapters (S7)
+    "httpx>=0.28.0,<1.0.0",         # HTTP context-source adapters (S7/S20)
     "json-repair>=0.57.0,<1.0.0",   # tolerant JSON parse of LLM output (S12)
+    "redis>=5.0,<6.0",              # Redis-backed quota limiter (S16, ADR-0004)
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.0,<10.0.0",
     "pytest-asyncio>=1.3.0,<2.0.0",
+    "fakeredis>=2.20,<3.0",         # in-memory Redis for quota tests (S16)
 ]
 
 # Domain tools register into the kernel via this entry-point group; the kernel's

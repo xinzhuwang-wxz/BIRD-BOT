@@ -36,6 +36,22 @@ _Avoid_: 账户、客户
 单台智能喂鸟器，归属于某个用户/租户。
 _Avoid_: feeder（中英混用时）、终端
 
+**多租户上下文层 (Tenant Context Layer)**:
+应用层承担的租户隔离与归因机制（内核三维原语为零，见 [ADR-0004](docs/adr/0004-tenant-isolation-pool-bridge.md)）：Postgres RLS + 向量库一租户一 namespace + `(tenant,skill,model)` 配额 + tenant 维度成本日志。租户上下文只在确定性组件（Workflow/Skill/Tool）间传递，**绝不让 LLM 承载隔离边界**。
+_Avoid_: 中间件、auth 层（混用时）
+
+**租户信封 (Tenant Envelope)**:
+鉴权流水线解析出、贯穿一次请求所有确定性组件的不可篡改租户身份（至少含 `tenant_id`，通常含 `user_id`/`device_id`）。派生会话键 `tenant:{tid}:user:{uid}:device:{did}`，并据以设置 DB 的 `app.current_tenant`。
+_Avoid_: token、claims、上下文（泛指时）
+
+**行级安全 / RLS**:
+Postgres 行级安全：业务表带 `tenant_id`+索引、`ENABLE`/`FORCE ROW LEVEL SECURITY` + 策略 `USING (tenant_id = current_setting('app.current_tenant', true))`；业务以**非 owner 角色**连接，请求入口设 `app.current_tenant`。漏写 `WHERE tenant_id` 也被强制过滤（fail-closed：未设租户 = 零可见）。见 [ADR-0009](docs/adr/0009-persistence-asyncpg-raw-sql.md)。
+_Avoid_: 权限、ACL
+
+**pool 隔离 / bridge**:
+默认隔离模型（[ADR-0004](docs/adr/0004-tenant-isolation-pool-bridge.md)）：全租户共享一套服务与库、按 `tenant_id` 隔离（pool），成本最优；架构预留 bridge（高合规/大客户退化为独立 schema 或独立向量 index + BYOK）。
+_Avoid_: 共享/独占（不加限定时）
+
 **识别后端 (Recognition Backend)**:
 给识别适配层做**物种分类**的专用视觉模型/API（第三方可商用 vision API、SpeciesNet 或自建分类器）。与推理/叙事用的 LLM 是不同的层。
 _Avoid_: 模型、provider（本项目「模型 / provider」专指 LLM 层）

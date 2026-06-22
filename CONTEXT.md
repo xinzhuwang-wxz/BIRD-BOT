@@ -96,6 +96,10 @@ _Avoid_: eBird 客户端（指代整体时）、数据源（不加限定）
 由当地频率映射的物种标签——常见 / 季节访客 / 近期罕见（COMMON/SEASONAL/RARE）。喂给 geo/temporal 重排与稀有度叙事；稀疏格点平滑，**别压没当地数据的真实罕见种**。
 _Avoid_: 频率（指标签时）
 
+**LLM 网关 / Model Router**:
+业务只引用逻辑模型名/能力档（`fast-vision`/`deep-reasoning`/`structured-json`）→ 经能力注册表（vision/structured-output/context-window/pricing/**驻留区域/合规标签**）解析到内核 Provider（built_on Provider/Preset/Fallback）。调用前断言能力（不发会被静默降级的请求）、调用后 JSON schema 校验 + 三类回退（常规/context_window/content_policy）；EU 区域硬约束（[ADR-0007](docs/adr/0007-eu-data-routing.md)）；**显式拒绝** 4 个无实现 backend（防内核 factory 静默 fallthrough 到 OpenAI-compat）。
+_Avoid_: 模型路由（泛指）、LiteLLM
+
 ### 能力分层（idea §4 四分法）
 
 **Agent**:

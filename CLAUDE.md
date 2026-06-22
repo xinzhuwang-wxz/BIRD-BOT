@@ -14,31 +14,27 @@
 
 ## 基座与硬约束
 
-仓库根的 `nanobot/` 是 **nanobot 的蒸馏轻量版（vendored）**，作为 Agent 内核（MIT）。BirdBot 领域代码是**独立应用层**。
+**BirdBot 是独立自建应用**：自建 `AgentRuntime`（薄 agent loop）+ LiteLLM provider 网关（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)）。项目早期作为 **vendored nanobot 内核的应用层**起步，spike 验证自写 agent loop 可行后已**全面移除 nanobot**（ADR-0013 supersedes [ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）；代码全在 `birdbot/` 包，无内核依赖。
 
-- 🟡 **`nanobot/` 是受控 vendor fork**（[ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）：**默认优先**用 entry_points Tool / Skills / Hook / config / MCP 在应用层扩展，领域代码放独立 `birdbot/` 包、不落进 `nanobot/agent/tools/`；**确需改内核**时改动要刻意、记录在案、维护与上游 diff（已放弃自动跟进上游）。
-- 🚫 **不用 `Nanobot.run`**（私有 hook swap，多租户并发会串扰）——用自建薄门面调 `process_direct`。
-- 🚫 关键业务/workflow 状态**不进对话记忆**（`session.metadata`）——落 Postgres。
+- 🟢 **自建 runtime**：开放层走 `birdbot.runtime.AgentRuntime`（`LLM→tool_calls→execute→loop`，工具 = `birdbot.runtime.tool.Tool` / `ToolRegistry`）；主链路走自建 Workflow。Provider 一律经 **LiteLLM**（业务只认逻辑模型名→真实供应商；EU 区域硬约束 / 能力断言 / 拒绝 unimpl backend 留在 Model Router 层）。
+- 🚫 关键业务/workflow 状态**不进对话记忆**——落 Postgres（ADR-0002）。
 - 🚫 **租户隔离不靠 LLM**——靠 Postgres RLS + 向量 namespace + 确定性组件传递租户信封。
 - 🔴 **eBird/媒体商业授权是 P0 合规门**（[ADR-0005](docs/adr/0005-ebird-compliance-source-mode.md)）：未取得 Cornell 书面许可前 eBird 不进付费路径；数据源支持 `auto|ebird-only|non-ebird-only` 显式模式，降级**可见不静默**。
-- 📊 **可观测性/埋点是一等公民**（day-one，[ADR-0006](docs/adr/0006-observability-first-class.md)）：LLM/工具/外部 API 调用结构化日志带 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟`；hook 不静默吞错；降级/熔断/额度耗尽必须 surface。
+- 📊 **可观测性/埋点是一等公民**（day-one，[ADR-0006](docs/adr/0006-observability-first-class.md)）：LLM/工具/外部 API 调用结构化日志带 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟`；AgentRuntime 直接调 telemetry/alert sink（无 hook 吞错层）；降级/熔断/额度耗尽必须 surface。
 
-> 基座真实能力 vs 缺口、69 条工程债、7 项待定决策（K1–K7）见方案文档第 1/6 节。改动前先核对那里，别把基座「假设的能力」当真（如：无网络 ingress、无 BirdEvent 入口、Cron 非工作流引擎、tenant 原语为零）。
+> 工程债、待定决策见方案文档；但基座已从 nanobot 切到自建 runtime（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)），方案文档中关于 nanobot 基座能力/缺口的描述大部分已过时——以 `birdbot/` 实际代码 + ADR 为准。
 
 ## 开发命令
 
 ```bash
-source .venv/bin/activate          # Python 3.11（uv 管理）
-uv pip install -e ".[dev]"         # 安装内核 + 测试依赖
-uv pip install -e ./birdbot --no-deps   # 安装 birdbot（独立 distribution；--no-deps 避开 nanobot-ai 索引解析）
-uv pip install "asyncpg>=0.30,<1.0" "fastapi>=0.115,<1.0"   # birdbot 运行时依赖（--no-deps 不带，单独装；ADR-0009/0010）
-python -m pytest tests/bus tests/config tests/session -q   # 快速核心回归
-python -m pytest birdbot/tests -q       # birdbot 应用层回归（无 DB 时 RLS 集成测自动 skip）
-python -c "import nanobot"               # 冒烟
-ruff check nanobot/ birdbot/             # line-length 100, 规则 E/F/I/N/W, 忽略 E501
+source .venv/bin/activate              # Python 3.11（uv 管理）
+uv pip install -e "birdbot/[dev]"      # 安装 birdbot（独立 distribution）+ 测试依赖
+python -m pytest birdbot/tests -q      # 应用层回归（无 DB 时 RLS 集成测自动 skip）
+python -c "import birdbot.runtime.agent"   # 冒烟（无 nanobot 依赖）
+ruff check birdbot/                    # line-length 100, 规则 E/F/I/N/W, 忽略 E501
 ```
 
-> `birdbot/` 是独立 distribution（自带 `pyproject.toml`，src-layout），领域 Tool 经 `[project.entry-points."nanobot.tools"]` 注册——装包即被内核 ToolLoader 自动发现，零改动 `nanobot/`（[ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）。改了 `birdbot/pyproject.toml` 的 entry_points 后需 `uv pip install -e ./birdbot --no-deps` 重装才会刷新注册元数据。
+> `birdbot/` 是独立 distribution（自带 `pyproject.toml`，src-layout，无内核依赖）。
 >
 > **RLS 集成测**（[ADR-0009](docs/adr/0009-persistence-asyncpg-raw-sql.md)）需一次性 Postgres；未设 `BIRDBOT_TEST_DATABASE_URL` 时自动 skip，CI/本地无 DB 也能回归：
 > ```bash

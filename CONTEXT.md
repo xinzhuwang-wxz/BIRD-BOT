@@ -64,6 +64,14 @@ _Avoid_: 去重 ID、主键
 解业务写与外部回调的双写不一致（[ADR-0002](docs/adr/0002-workflow-on-postgres.md)）：事件行与业务写**同事务**提交进 `outbox`，独立 relay **至少一次**投递、消费者按 `dedupe_key` 幂等去重。
 _Avoid_: 消息队列、MQ（泛指时）
 
+**位置三层降级 (Location Three-Tier)**:
+位置精度分级（[ADR-0007](docs/adr/0007-eu-data-routing.md)，GDPR 数据最小化）：`raw` 不持久化（瞬时入口）/ `internal` 5–20km 网格（仅供稀有度）/ `public·log` 城市级（展示/日志）。**先降精度再跨境**；与敏感物种、PII 同归统一脱敏层。
+_Avoid_: 坐标、定位（不加限定）
+
+**留存 TTL / DSAR**:
+各类数据（位置/媒体/事件/会话记忆）定留存 TTL + 到期清理任务（purge 用 superuser 跨租户扫）；DSAR 按 `tenant/user/device` 级联删除/导出（走 tenant_scope，RLS 保证不跨租户）。面向欧盟硬要求。
+_Avoid_: 删除、清理（不加限定）
+
 **识别后端 (Recognition Backend)**:
 给识别适配层做**物种分类**的专用视觉模型/API（第三方可商用 vision API、SpeciesNet 或自建分类器）。与推理/叙事用的 LLM 是不同的层。
 _Avoid_: 模型、provider（本项目「模型 / provider」专指 LLM 层）

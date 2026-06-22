@@ -30,14 +30,21 @@
 ```bash
 source .venv/bin/activate          # Python 3.11（uv 管理）
 uv pip install -e ".[dev]"         # 安装内核 + 测试依赖
-uv pip install -e ./birdbot --no-deps   # 安装 birdbot 应用层（独立 distribution；内核已装，故 --no-deps）
+uv pip install -e ./birdbot --no-deps   # 安装 birdbot（独立 distribution；--no-deps 避开 nanobot-ai 索引解析）
+uv pip install "asyncpg>=0.30,<1.0"     # birdbot 运行时依赖（--no-deps 不会带，单独装；ADR-0009）
 python -m pytest tests/bus tests/config tests/session -q   # 快速核心回归
-python -m pytest birdbot/tests -q  # birdbot 应用层回归（entry_points 冒烟靠「装包即被发现」，需先装 birdbot）
-python -c "import nanobot"         # 冒烟
-ruff check nanobot/ birdbot/       # line-length 100, 规则 E/F/I/N/W, 忽略 E501
+python -m pytest birdbot/tests -q       # birdbot 应用层回归（无 DB 时 RLS 集成测自动 skip）
+python -c "import nanobot"               # 冒烟
+ruff check nanobot/ birdbot/             # line-length 100, 规则 E/F/I/N/W, 忽略 E501
 ```
 
 > `birdbot/` 是独立 distribution（自带 `pyproject.toml`，src-layout），领域 Tool 经 `[project.entry-points."nanobot.tools"]` 注册——装包即被内核 ToolLoader 自动发现，零改动 `nanobot/`（[ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）。改了 `birdbot/pyproject.toml` 的 entry_points 后需 `uv pip install -e ./birdbot --no-deps` 重装才会刷新注册元数据。
+>
+> **RLS 集成测**（[ADR-0009](docs/adr/0009-persistence-asyncpg-raw-sql.md)）需一次性 Postgres；未设 `BIRDBOT_TEST_DATABASE_URL` 时自动 skip，CI/本地无 DB 也能回归：
+> ```bash
+> docker run -d --name birdbot-test-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=birdbot_test -p 5433:5432 postgres:16-alpine
+> export BIRDBOT_TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/birdbot_test
+> ```
 
 - Python 3.11+，全程 asyncio。`pytest` 用 `asyncio_mode=auto`。
 - 改动以**小步提交**为单位；提交信息英文 + 末尾 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`。

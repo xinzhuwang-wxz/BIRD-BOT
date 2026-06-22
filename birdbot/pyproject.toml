@@ -10,6 +10,7 @@ license = { text = "MIT" }
 # from a package index where it does not exist.
 dependencies = [
     "nanobot-ai",
+    "asyncpg>=0.30,<1.0",   # async-native Postgres driver (ADR-0009)
 ]
 
 [project.optional-dependencies]

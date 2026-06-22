@@ -10,15 +10,16 @@ from __future__ import annotations
 from fastapi import FastAPI, Header, HTTPException
 
 from birdbot.ingress.schema import BirdEvent
-from birdbot.ingress.store import EventStore
 
 
-def create_app(store: EventStore) -> FastAPI:
+def create_app(ingest) -> FastAPI:
+    """``ingest`` is a FastStageIngest-like object (submit + job_status); kept untyped to
+    avoid an ingress<->pipeline import cycle."""
     app = FastAPI(title="BirdBot Ingress", version="0")
 
     @app.post("/v0/events", status_code=202)
     async def post_event(event: BirdEvent) -> dict:
-        result = await store.accept(event)
+        result = await ingest.submit(event)
         return {
             "job_id": str(result.job_id),
             "status": result.status,
@@ -33,7 +34,7 @@ def create_app(store: EventStore) -> FastAPI:
         # verified identity. Never trusted as a security boundary until then (ADR-0010).
         x_tenant_id: str = Header(...),
     ) -> dict:
-        status = await store.job_status(x_tenant_id, job_id)
+        status = await ingest.job_status(x_tenant_id, job_id)
         if status is None:
             raise HTTPException(status_code=404, detail="job not found")
         return {"job_id": job_id, "status": status}

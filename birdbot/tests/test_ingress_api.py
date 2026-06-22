@@ -12,7 +12,12 @@ from birdbot.ingress.store import EventStore
 
 
 def _client(app_db) -> AsyncClient:
-    app = create_app(EventStore(app_db))
+    from birdbot.pipeline.orchestrate import FastStageIngest
+    from birdbot.recognition.adapter import RecognitionAdapter
+    from birdbot.recognition.frame_scorer import FrameScorer
+
+    ingest = FastStageIngest(EventStore(app_db), RecognitionAdapter(), FrameScorer())
+    app = create_app(ingest)
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

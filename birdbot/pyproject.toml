@@ -1,15 +1,10 @@
 [project]
 name = "birdbot"
 version = "0.0.1"
-description = "BirdBot — cloud AI observation layer for smart bird feeders (application layer atop the vendored nanobot kernel)"
+description = "BirdBot — cloud AI observation layer for smart bird feeders (self-hosted runtime, ADR-0013)"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-# Depends on the vendored kernel (editable-installed as `nanobot-ai`). In this
-# monorepo the kernel is always co-installed, so install with `--no-deps`
-# (see CONTRIBUTING note in the issue) — this avoids resolving `nanobot-ai`
-# from a package index where it does not exist.
 dependencies = [
-    "nanobot-ai",
     "asyncpg>=0.30,<1.0",   # async-native Postgres driver (ADR-0009)
     "fastapi>=0.115,<1.0",  # HTTP ingress (ADR-0010); starlette/pydantic already present
     "openai>=2.8.0",        # OpenAICompatStoryLLM (S12): vision + structured output
@@ -26,11 +21,6 @@ dev = [
     "pytest-asyncio>=1.3.0,<2.0.0",
     "fakeredis>=2.20,<3.0",         # in-memory Redis for quota tests (S16)
 ]
-
-# Domain tools register into the kernel via this entry-point group; the kernel's
-# ToolLoader._discover_plugins() scans `group="nanobot.tools"` at runtime.
-[project.entry-points."nanobot.tools"]
-birdbot_echo = "birdbot.tools.echo:EchoTool"
 
 [build-system]
 requires = ["hatchling"]

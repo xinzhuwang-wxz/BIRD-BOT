@@ -31,7 +31,7 @@
 source .venv/bin/activate          # Python 3.11（uv 管理）
 uv pip install -e ".[dev]"         # 安装内核 + 测试依赖
 uv pip install -e ./birdbot --no-deps   # 安装 birdbot（独立 distribution；--no-deps 避开 nanobot-ai 索引解析）
-uv pip install "asyncpg>=0.30,<1.0"     # birdbot 运行时依赖（--no-deps 不会带，单独装；ADR-0009）
+uv pip install "asyncpg>=0.30,<1.0" "fastapi>=0.115,<1.0"   # birdbot 运行时依赖（--no-deps 不带，单独装；ADR-0009/0010）
 python -m pytest tests/bus tests/config tests/session -q   # 快速核心回归
 python -m pytest birdbot/tests -q       # birdbot 应用层回归（无 DB 时 RLS 集成测自动 skip）
 python -c "import nanobot"               # 冒烟

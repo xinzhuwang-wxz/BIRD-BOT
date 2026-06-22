@@ -1,16 +1,16 @@
 """Post-call validation + failure classification for the Model Router.
 
-Structured output is validated against its JSON schema (reusing the kernel's own
-validator — a clean built-on point), and provider failures are classified so the right
-fallback applies: generic/schema -> retry the next entry, context_window -> shrink the
-context, content_policy -> reject (no retry).
+Structured output is validated against its JSON schema with the standard ``jsonschema``
+validator (ADR-0013: self-hosted, no kernel dependency), and provider failures are
+classified so the right fallback applies: generic/schema -> retry the next entry,
+context_window -> shrink the context, content_policy -> reject (no retry).
 """
 from __future__ import annotations
 
 from enum import Enum
 from typing import Any
 
-from nanobot.agent.tools.base import Schema
+import jsonschema
 
 
 class FailureClass(str, Enum):
@@ -22,7 +22,8 @@ class FailureClass(str, Enum):
 
 def validate_structured_output(data: Any, schema: dict[str, Any]) -> list[str]:
     """Validate ``data`` against a JSON schema; returns error messages (empty = valid)."""
-    return Schema.validate_json_schema_value(data, {**schema, "type": "object"})
+    validator = jsonschema.Draft202012Validator({**schema, "type": "object"})
+    return [error.message for error in validator.iter_errors(data)]
 
 
 _CONTEXT_MARKERS = ("context length", "context window", "maximum context", "too many tokens")

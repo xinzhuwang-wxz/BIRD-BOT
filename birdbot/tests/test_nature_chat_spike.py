@@ -44,7 +44,7 @@ async def test_agent_loop_orchestrates_multi_turn_nature_chat(tmp_path):
     )
 
     loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, model="test-model")
-    history = DeviceHistoryTool({"blue tit": {"visits_30d": 8}})
+    history = DeviceHistoryTool({"blue tit": {"visits_30d": 8}}, device_id="d1")
     context = BirdContextTool({"blue tit": "common"}, region="US-CA")
     registry = ToolRegistry()
     registry.register(history)
@@ -59,7 +59,7 @@ async def test_agent_loop_orchestrates_multi_turn_nature_chat(tmp_path):
     assert result is not None
     assert "regular" in result.content.lower()
     # The agent loop autonomously chose to call BOTH tools, across separate turns:
-    assert history.calls == [{"species": "blue tit"}]
+    assert history.calls == [{"species": "blue tit", "device_id": "d1"}]
     # region was bound deterministically at construction, NOT sent by the LLM:
     assert context.calls == [{"species": "blue tit", "region": "US-CA"}]
     assert provider.chat_with_retry.await_count == 3  # 2 tool turns + final answer

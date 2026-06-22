@@ -1,7 +1,7 @@
-"""Nature Chat domain tools (spike): nanobot Tools the agent loop can call across turns.
+"""Nature Chat domain tools: self-hosted Tools the AgentRuntime can call across turns.
 
-Stub data — the point is to exercise nanobot's multi-turn tool orchestration, not the
-data sources (which the main-line modules already cover).
+Stub data — the point is to exercise multi-turn tool orchestration, not the data sources
+(which the main-line modules already cover).
 
 Deterministic context (region/device) is bound at construction and NOT exposed as an LLM
 parameter, so the model can't hallucinate it (方案 §176: tenant/device context flows only
@@ -14,7 +14,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from nanobot.agent.tools.base import Tool, tool_parameters
+from birdbot.runtime.tool import Tool, tool_parameters
 
 
 @tool_parameters(

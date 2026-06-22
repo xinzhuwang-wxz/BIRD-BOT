@@ -9,9 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from nanobot.agent.tools.registry import ToolRegistry
-
 from birdbot.chat.tools import BirdContextTool, DeviceHistoryTool
+from birdbot.runtime.registry import ToolRegistry
 from birdbot.tenant.context import TenantEnvelope
 
 

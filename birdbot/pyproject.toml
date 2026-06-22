@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.28.0,<1.0.0",         # HTTP context-source adapters (S7/S20)
     "json-repair>=0.57.0,<1.0.0",   # tolerant JSON parse of LLM output (S12)
     "redis>=5.0,<6.0",              # Redis-backed quota limiter (S16, ADR-0004)
+    "litellm>=1.50,<2.0",           # LLM provider gateway (ADR-0013); AgentRuntime + Model Router backend
 ]
 
 [project.optional-dependencies]

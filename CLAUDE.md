@@ -30,10 +30,14 @@
 ```bash
 source .venv/bin/activate          # Python 3.11（uv 管理）
 uv pip install -e ".[dev]"         # 安装内核 + 测试依赖
+uv pip install -e ./birdbot --no-deps   # 安装 birdbot 应用层（独立 distribution；内核已装，故 --no-deps）
 python -m pytest tests/bus tests/config tests/session -q   # 快速核心回归
+python -m pytest birdbot/tests -q  # birdbot 应用层回归（entry_points 冒烟靠「装包即被发现」，需先装 birdbot）
 python -c "import nanobot"         # 冒烟
-ruff check nanobot/                # line-length 100, 规则 E/F/I/N/W, 忽略 E501
+ruff check nanobot/ birdbot/       # line-length 100, 规则 E/F/I/N/W, 忽略 E501
 ```
+
+> `birdbot/` 是独立 distribution（自带 `pyproject.toml`，src-layout），领域 Tool 经 `[project.entry-points."nanobot.tools"]` 注册——装包即被内核 ToolLoader 自动发现，零改动 `nanobot/`（[ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）。改了 `birdbot/pyproject.toml` 的 entry_points 后需 `uv pip install -e ./birdbot --no-deps` 重装才会刷新注册元数据。
 
 - Python 3.11+，全程 asyncio。`pytest` 用 `asyncio_mode=auto`。
 - 改动以**小步提交**为单位；提交信息英文 + 末尾 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`。

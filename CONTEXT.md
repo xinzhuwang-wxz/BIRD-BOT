@@ -108,6 +108,10 @@ _Avoid_: 频率（指标签时）
 业务只引用逻辑模型名/能力档（`fast-vision`/`deep-reasoning`/`structured-json`）→ 经能力注册表（vision/structured-output/context-window/pricing/**驻留区域/合规标签**）解析到内核 Provider（built_on Provider/Preset/Fallback）。调用前断言能力（不发会被静默降级的请求）、调用后 JSON schema 校验 + 三类回退（常规/context_window/content_policy）；EU 区域硬约束（[ADR-0007](docs/adr/0007-eu-data-routing.md)）；**显式拒绝** 4 个无实现 backend（防内核 factory 静默 fallthrough 到 OpenAI-compat）。
 _Avoid_: 模型路由（泛指）、LiteLLM
 
+**观测层 / 埋点 (Observability)**:
+day-one 一等公民（[ADR-0006](docs/adr/0006-observability-first-class.md)）：每次 LLM/工具/外部 API 调用记 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟 · 数据流向`（支撑 chargeback/审计）；`(tenant,skill,model)` 配额 **fair-share**（单租户失控只限自己）；降级/熔断/额度耗尽 **surface 告警、绝不静默**；观测 Hook `reraise=True`（翻转内核 `reraise=False` 默认吞错）。
+_Avoid_: 日志、监控（泛指时）
+
 ### 能力分层（idea §4 四分法）
 
 **Agent**:

@@ -10,7 +10,7 @@
 
 - 方向稿：[`docs/2026-06-22-birdbot-idea.md`](docs/2026-06-22-birdbot-idea.md)（初步想法，**不一定对**）
 - 最佳实践方案：[`docs/2026-06-22-birdbot-solution.md`](docs/2026-06-22-birdbot-solution.md)（审计+调研+校验后的目标架构、工程债、待定决策、分期计划）—— **当前权威设计依据**
-- 当前阶段：**P1 定靶**（架构已成稿，关键不可逆决策待拍板；尚未进入规划/执行）
+- 当前阶段：**执行中**——去 nanobot→自建 runtime 完成（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)）；LLMGateway 受治理调用闭环 + 可部署组装根完成（[ADR-0014](docs/adr/0014-llm-gateway-governed-call.md)）；工程 must-fix（观测/配额/成本接线、可部署）清零，剩 eBird/欧盟合规阻断门见 PRD #33
 
 ## 基座与硬约束
 

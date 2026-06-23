@@ -42,7 +42,7 @@ async def main() -> None:
     from birdbot.router.router import ModelRouter
     from birdbot.workflow.outbox import Outbox, relay
     from birdbot.workflow.runtime import WorkflowRuntime
-    from openai import AsyncOpenAI
+    import litellm
 
     admin = await asyncpg.connect(dsn)
     try:
@@ -75,8 +75,14 @@ async def main() -> None:
             ]
         )
         router = ModelRouter(registry)
-        client = AsyncOpenAI(api_key=api_key, base_url=api_base)
-        story_llm = build_story_llm(router=router, client=client, user_region="US")
+
+        async def completion(*, model, messages, **kwargs):  # LiteLLM OpenAI-compat path
+            return await litellm.acompletion(
+                model=f"openai/{model}", messages=messages,
+                api_base=api_base, api_key=api_key, **kwargs,
+            )
+
+        story_llm = build_story_llm(router=router, completion=completion, user_region="US")
 
         data_url = "data:image/jpeg;base64," + base64.b64encode(
             Path(image_path).read_bytes()

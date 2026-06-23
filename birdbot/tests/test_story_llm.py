@@ -11,7 +11,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
-from birdbot.deep.llm import OpenAICompatStoryLLM, build_story_llm
+from birdbot.deep.llm import LiteLLMStoryLLM, OpenAICompatStoryLLM, build_story_llm
 from birdbot.deep.story import STORY_SCHEMA
 from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
 from birdbot.router.router import ModelRouter
@@ -77,6 +77,46 @@ async def test_story_llm_repairs_imperfect_json():
     assert out["behavior"] == "feeding"
 
 
+class _FakeCompletion:
+    """Mimics litellm.acompletion(model=, messages=, **kw) -> dict; captures the call."""
+
+    def __init__(self, content: str) -> None:
+        self._content = content
+        self.seen: dict = {}
+
+    async def __call__(self, *, model, messages, **kwargs):
+        self.seen = {"model": model, "messages": messages, "kwargs": kwargs}
+        return {"choices": [{"message": {"content": self._content}}]}
+
+
+@pytest.mark.asyncio
+async def test_litellm_story_llm_sends_vision_and_parses_json():
+    completion = _FakeCompletion(json.dumps(_ANSWER))
+    llm = LiteLLMStoryLLM(model="deep-vision", completion=completion)
+
+    out = await llm.generate(
+        prompt="describe",
+        frames=["data:image/jpeg;base64,QQ=="],
+        schema=STORY_SCHEMA,
+        model="deep-vision",
+    )
+
+    assert out == _ANSWER
+    parts = completion.seen["messages"][0]["content"]
+    assert any(p.get("type") == "image_url" for p in parts)  # frame sent as vision
+    assert any(p.get("type") == "text" for p in parts)
+    assert completion.seen["model"] == "deep-vision"  # router-resolved model passed through
+    assert completion.seen["kwargs"]["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_litellm_story_llm_repairs_imperfect_json():
+    completion = _FakeCompletion(json.dumps(_ANSWER) + "\n\nHope that helps!")
+    llm = LiteLLMStoryLLM(model="m", completion=completion)
+    out = await llm.generate(prompt="p", frames=[], schema=STORY_SCHEMA, model="m")
+    assert out["behavior"] == "feeding"
+
+
 def test_build_story_llm_routes_model_via_router():
     registry = CapabilityRegistry(
         [
@@ -92,6 +132,6 @@ def test_build_story_llm_routes_model_via_router():
             )
         ]
     )
-    client = AsyncOpenAI(api_key="test", base_url="https://api.test/v1")
-    llm = build_story_llm(router=ModelRouter(registry), client=client, user_region="US")
+    llm = build_story_llm(router=ModelRouter(registry), user_region="US")
     assert llm.model == "glm-4v"  # logical "deep-reasoning" -> real model
+    assert isinstance(llm, LiteLLMStoryLLM)  # production default is the LiteLLM adapter

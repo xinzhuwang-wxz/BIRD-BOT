@@ -72,12 +72,18 @@ async def test_replay_distinguishes_requests(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_records_and_replays_an_openai_vision_story_call(tmp_path):
-    """End-to-end use: an OpenAICompatStoryLLM vision call recorded once, replayed in CI."""
-    from openai import AsyncOpenAI
-
-    from birdbot.deep.llm import OpenAICompatStoryLLM
-    from birdbot.deep.story import STORY_SCHEMA
+async def test_records_and_replays_a_governed_vision_story_call(tmp_path):
+    """End-to-end: a deep-stage vision call recorded once, replayed in CI — and routed
+    THROUGH the gateway, so the record/replay path is governed too (ADR-0014). Telemetry is
+    recorded on both the record and replay passes."""
+    from birdbot.deep.llm import build_story_llm
+    from birdbot.observability.alerts import ListAlertSink
+    from birdbot.observability.telemetry import ListTelemetrySink
+    from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
+    from birdbot.router.router import ModelRouter
+    from birdbot.runtime.completion import openai_sdk_completion
+    from birdbot.runtime.gateway import LLMGateway
+    from birdbot.tenant.context import TenantEnvelope
 
     cassette = tmp_path / "llm.json"
     answer = {"behavior": "feeding", "rarity_narrative": "common", "story": "A robin."}
@@ -87,18 +93,37 @@ async def test_records_and_replays_an_openai_vision_story_call(tmp_path):
             {"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)},
              "finish_reason": "stop"}
         ],
+        "usage": {"total_tokens": 50},
     }
     real = httpx.MockTransport(lambda req: httpx.Response(200, json=completion))
 
-    async def story(transport):
-        client = AsyncOpenAI(
-            api_key="k", base_url="https://api.test/v1",
-            http_client=httpx.AsyncClient(transport=transport),
-        )
-        return await OpenAICompatStoryLLM(client=client, model="m").generate(
-            prompt="p", frames=["data:image/jpeg;base64,QQ=="], schema=STORY_SCHEMA, model="m"
-        )
+    router = ModelRouter(CapabilityRegistry([
+        ModelEntry(logical_name="deep-reasoning", backend="openai_compat", model="m",
+                   capabilities=frozenset({Capability.VISION, Capability.STRUCTURED_OUTPUT}),
+                   context_window=128_000, pricing_per_mtok=1.0, residency_region="US",
+                   compliance_tags=frozenset({"dpf"}))]))
 
-    recorded = await story(RecordReplayTransport(cassette, mode="record", real_transport=real))
-    replayed = await story(RecordReplayTransport(cassette, mode="replay"))
+    class _AllowQuota:
+        async def try_acquire(self, key):
+            return True
+
+        async def release(self, key):
+            pass
+
+    async def story(transport):
+        telemetry = ListTelemetrySink()
+        gateway = LLMGateway(
+            router=router, telemetry=telemetry, alerts=ListAlertSink(), quota=_AllowQuota(),
+            completion=openai_sdk_completion(api_key="k", base_url="https://api.test/v1",
+                                             transport=transport),
+        )
+        out = await build_story_llm(gateway=gateway).generate(
+            prompt="p", frames=["data:image/jpeg;base64,QQ=="],
+            envelope=TenantEnvelope(tenant_id="A", device_id="d1"), region="US",
+        )
+        return out, telemetry
+
+    recorded, tel_rec = await story(RecordReplayTransport(cassette, mode="record", real_transport=real))
+    replayed, tel_rep = await story(RecordReplayTransport(cassette, mode="replay"))
     assert recorded == replayed == answer
+    assert len(tel_rec.records) == 1 and len(tel_rep.records) == 1  # governed on both passes

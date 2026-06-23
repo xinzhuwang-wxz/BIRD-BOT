@@ -1,9 +1,9 @@
 """Daily digest delivery + Cron wiring.
 
 run_daily_digest aggregates and enqueues the digest to the outbox, idempotent per
-tenant+date (it won't re-enqueue an already-queued digest). DailyDigestScheduler wires
-nanobot's CronService — setting on_job and calling start(), which the kernel app never
-does (D5) — so the trigger actually fires; aggregation/state stay in Postgres.
+tenant+date (it won't re-enqueue an already-queued digest). DailyDigestScheduler wires the
+self-hosted CronService (ADR-0013) — setting on_job and calling start() so the trigger
+actually fires; aggregation/state stay in Postgres (ADR-0002).
 """
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ async def run_daily_digest(
 
 
 class DailyDigestScheduler:
-    """Wires nanobot's CronService: sets on_job and starts it (fixes the D5 gap)."""
+    """Wires the self-hosted CronService (ADR-0013): sets on_job and starts it."""
 
     def __init__(
         self,
@@ -59,10 +59,10 @@ class DailyDigestScheduler:
         self._db = db
         self._outbox = outbox
         self._topic = callback_topic
-        cron_service.on_job = self._on_job  # the kernel never wires this
+        cron_service.on_job = self._on_job  # wire the trigger callback
 
     async def start(self) -> None:
-        await self._cron.start()  # the kernel app never calls this
+        await self._cron.start()  # start the trigger loop
 
     async def _on_job(self, job: Any) -> str | None:
         metadata = getattr(job, "metadata", None) or {}

@@ -1,9 +1,10 @@
 """Integration tests for the deep stage (needs DB; skips without DSN).
 
-Ties together WorkflowRuntime (#5), Outbox (#5), ModelRouter (#6), and a fake StoryLLM:
-the LLM is routed via the Model Router, receives <=8 frames + structured evidence, the
-hard output contract is enforced in code (not the Skill), the story is persisted, and a
-callback is enqueued in the same transaction. Resuming replays without re-calling.
+Ties together WorkflowRuntime (#5), Outbox (#5), and a fake StoryLLM: the StoryLLM (its
+gateway, in production) receives <=8 frames + evidence, the hard output contract is enforced
+in code (not the Skill), the story is persisted, and a callback is enqueued in the same
+transaction. Resuming replays without re-calling. Routing/governance is the gateway's job
+(see test_gateway), so the deep stage uses a fake StoryLLM here.
 """
 from __future__ import annotations
 
@@ -14,8 +15,6 @@ import pytest
 from birdbot.deep.workflow import run_deep_stage
 from birdbot.ingress.schema import BirdEvent
 from birdbot.ingress.store import EventStore
-from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
-from birdbot.router.router import ModelRouter
 from birdbot.workflow.outbox import Outbox, relay
 from birdbot.workflow.runtime import WorkflowRuntime
 
@@ -32,29 +31,10 @@ class FakeStoryLLM:
         self.calls = 0
         self.capture = {}
 
-    async def generate(self, *, prompt, frames, schema, model):
+    async def generate(self, *, prompt, frames, envelope, region="US"):
         self.calls += 1
-        self.capture = {"prompt": prompt, "frames": frames, "schema": schema, "model": model}
+        self.capture = {"prompt": prompt, "frames": frames, "envelope": envelope, "region": region}
         return self._result
-
-
-def _router():
-    return ModelRouter(
-        CapabilityRegistry(
-            [
-                ModelEntry(
-                    logical_name="deep-reasoning",
-                    backend="anthropic",
-                    model="claude-opus-4-8",
-                    capabilities=frozenset({Capability.STRUCTURED_OUTPUT, Capability.VISION}),
-                    context_window=200_000,
-                    pricing_per_mtok=15.0,
-                    residency_region="US",
-                    compliance_tags=frozenset({"dpf"}),
-                )
-            ]
-        )
-    )
 
 
 async def _seed_event(app_db, *, device_id="d1", event_id="e1"):
@@ -72,7 +52,6 @@ async def test_deep_stage_persists_story_and_enqueues_callback(app_db):
         db=app_db,
         runtime=WorkflowRuntime(app_db),
         outbox=Outbox(app_db),
-        router=_router(),
         story_llm=llm,
         tenant_id="A",
         device_id="d1",
@@ -81,7 +60,7 @@ async def test_deep_stage_persists_story_and_enqueues_callback(app_db):
     )
 
     assert story["story"] == _STORY["story"]
-    assert llm.capture["model"] == "claude-opus-4-8"  # routed via Model Router
+    assert llm.capture["envelope"].tenant_id == "A"  # tenant envelope flows to the adapter
     async with app_db.tenant_scope("A") as conn:
         row = await conn.fetchrow("SELECT status, payload FROM events WHERE event_id = 'e1'")
         assert row["status"] == "done"
@@ -94,7 +73,7 @@ async def test_deep_stage_limits_frames_to_eight(app_db):
     await _seed_event(app_db)
     llm = FakeStoryLLM(_STORY)
     await run_deep_stage(
-        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db), router=_router(),
+        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db),
         story_llm=llm, tenant_id="A", device_id="d1", event_id="e1",
         snapshot={"frames": [f"f{i}.jpg" for i in range(20)]},
     )
@@ -107,7 +86,7 @@ async def test_hard_contract_rejects_invalid_story_schema(app_db):
     bad_llm = FakeStoryLLM({"behavior": "feeding"})  # missing rarity_narrative / story
     with pytest.raises(ValueError):
         await run_deep_stage(
-            db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db), router=_router(),
+            db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db),
             story_llm=bad_llm, tenant_id="A", device_id="d1", event_id="e1", snapshot={"frames": []},
         )
 
@@ -117,7 +96,7 @@ async def test_deep_stage_resumes_without_recalling_llm(app_db):
     await _seed_event(app_db)
     llm = FakeStoryLLM(_STORY)
     args = dict(
-        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db), router=_router(),
+        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db),
         story_llm=llm, tenant_id="A", device_id="d1", event_id="e1", snapshot={"frames": []},
     )
     await run_deep_stage(**args)
@@ -129,7 +108,7 @@ async def test_deep_stage_resumes_without_recalling_llm(app_db):
 async def test_callback_is_deliverable_via_outbox_relay(app_db, admin_conn):
     await _seed_event(app_db)
     await run_deep_stage(
-        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db), router=_router(),
+        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db),
         story_llm=FakeStoryLLM(_STORY), tenant_id="A", device_id="d1", event_id="e1",
         snapshot={"frames": []},
     )

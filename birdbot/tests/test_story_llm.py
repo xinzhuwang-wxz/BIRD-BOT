@@ -11,10 +11,10 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
-from birdbot.deep.llm import LiteLLMStoryLLM, OpenAICompatStoryLLM, build_story_llm
+from birdbot.deep.llm import GatewayStoryLLM, OpenAICompatStoryLLM, build_story_llm
 from birdbot.deep.story import STORY_SCHEMA
-from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
-from birdbot.router.router import ModelRouter
+from birdbot.runtime.gateway import GatewayResult
+from birdbot.tenant.context import TenantEnvelope
 
 _ANSWER = {"behavior": "feeding", "rarity_narrative": "common locally", "story": "A robin fed."}
 
@@ -77,61 +77,52 @@ async def test_story_llm_repairs_imperfect_json():
     assert out["behavior"] == "feeding"
 
 
-class _FakeCompletion:
-    """Mimics litellm.acompletion(model=, messages=, **kw) -> dict; captures the call."""
+class _FakeGateway:
+    """Mimics LLMGateway.complete(...) -> GatewayResult; captures the governed call."""
 
     def __init__(self, content: str) -> None:
         self._content = content
         self.seen: dict = {}
 
-    async def __call__(self, *, model, messages, **kwargs):
-        self.seen = {"model": model, "messages": messages, "kwargs": kwargs}
-        return {"choices": [{"message": {"content": self._content}}]}
+    async def complete(self, *, envelope, logical_model, messages, skill,
+                        required_caps=(), region="US", **kwargs):
+        self.seen = {"envelope": envelope, "logical_model": logical_model,
+                     "messages": messages, "skill": skill, "region": region, "kwargs": kwargs}
+        return GatewayResult(raw={"choices": [{"message": {"content": self._content}}]},
+                             provider="openai_compat", tokens=10, cost_usd=0.0, latency_ms=1.0)
 
 
 @pytest.mark.asyncio
-async def test_litellm_story_llm_sends_vision_and_parses_json():
-    completion = _FakeCompletion(json.dumps(_ANSWER))
-    llm = LiteLLMStoryLLM(model="deep-vision", completion=completion)
+async def test_gateway_story_llm_sends_vision_through_gateway_and_parses_json():
+    gw = _FakeGateway(json.dumps(_ANSWER))
+    llm = GatewayStoryLLM(gateway=gw)
 
     out = await llm.generate(
         prompt="describe",
         frames=["data:image/jpeg;base64,QQ=="],
-        schema=STORY_SCHEMA,
-        model="deep-vision",
+        envelope=TenantEnvelope(tenant_id="A", device_id="d1"),
+        region="US-CA",
     )
 
     assert out == _ANSWER
-    parts = completion.seen["messages"][0]["content"]
+    parts = gw.seen["messages"][0]["content"]
     assert any(p.get("type") == "image_url" for p in parts)  # frame sent as vision
     assert any(p.get("type") == "text" for p in parts)
-    assert completion.seen["model"] == "deep-vision"  # router-resolved model passed through
-    assert completion.seen["kwargs"]["response_format"] == {"type": "json_object"}
+    assert gw.seen["logical_model"] == "deep-reasoning"  # gateway resolves the real model
+    assert gw.seen["skill"] == "deep"
+    assert gw.seen["region"] == "US-CA"  # deterministic region flows to routing
+    assert gw.seen["kwargs"]["response_format"] == {"type": "json_object"}
 
 
 @pytest.mark.asyncio
-async def test_litellm_story_llm_repairs_imperfect_json():
-    completion = _FakeCompletion(json.dumps(_ANSWER) + "\n\nHope that helps!")
-    llm = LiteLLMStoryLLM(model="m", completion=completion)
-    out = await llm.generate(prompt="p", frames=[], schema=STORY_SCHEMA, model="m")
+async def test_gateway_story_llm_repairs_imperfect_json():
+    gw = _FakeGateway(json.dumps(_ANSWER) + "\n\nHope that helps!")
+    llm = GatewayStoryLLM(gateway=gw)
+    out = await llm.generate(prompt="p", frames=[],
+                             envelope=TenantEnvelope(tenant_id="A", device_id="d1"))
     assert out["behavior"] == "feeding"
 
 
-def test_build_story_llm_routes_model_via_router():
-    registry = CapabilityRegistry(
-        [
-            ModelEntry(
-                logical_name="deep-reasoning",
-                backend="openai_compat",
-                model="glm-4v",
-                capabilities=frozenset({Capability.VISION, Capability.STRUCTURED_OUTPUT}),
-                context_window=128_000,
-                pricing_per_mtok=2.0,
-                residency_region="US",
-                compliance_tags=frozenset({"dpf"}),
-            )
-        ]
-    )
-    llm = build_story_llm(router=ModelRouter(registry), user_region="US")
-    assert llm.model == "glm-4v"  # logical "deep-reasoning" -> real model
-    assert isinstance(llm, LiteLLMStoryLLM)  # production default is the LiteLLM adapter
+def test_build_story_llm_binds_gateway():
+    llm = build_story_llm(gateway=_FakeGateway("{}"))
+    assert isinstance(llm, GatewayStoryLLM)  # production deep-stage adapter on the gateway

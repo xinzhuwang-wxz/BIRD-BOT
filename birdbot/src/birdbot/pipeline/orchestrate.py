@@ -67,7 +67,6 @@ async def advance_deep(
     db: Any,
     runtime: Any,
     outbox: Any,
-    router: Any,
     story_llm: Any,
     tenant_id: str,
     device_id: str,
@@ -77,6 +76,7 @@ async def advance_deep(
     """Read the fast-stage snapshot and advance the deep stage to a persisted Story.
 
     region is supplied deterministically (device location, S13), never inferred by the LLM.
+    Routing/governance now live in the LLMGateway the story_llm holds (ADR-0014).
     """
     from birdbot.deep.workflow import run_deep_stage
 
@@ -97,11 +97,10 @@ async def advance_deep(
         db=db,
         runtime=runtime,
         outbox=outbox,
-        router=router,
         story_llm=story_llm,
         tenant_id=tenant_id,
         device_id=device_id,
         event_id=event_id,
         snapshot=snapshot,
-        user_region="US",
+        user_region=region,
     )

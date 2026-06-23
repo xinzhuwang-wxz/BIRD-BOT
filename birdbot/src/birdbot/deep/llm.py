@@ -57,7 +57,10 @@ class GatewayStoryLLM:
             max_tokens=800,
         )
         data = result.raw.model_dump() if hasattr(result.raw, "model_dump") else result.raw
-        raw = data["choices"][0]["message"]["content"] or ""
+        choices = data.get("choices") or []
+        if not choices:
+            raise ValueError("deep-stage LLM returned no choices")
+        raw = (choices[0].get("message") or {}).get("content") or ""
         try:
             return json.loads(raw)
         except json.JSONDecodeError:

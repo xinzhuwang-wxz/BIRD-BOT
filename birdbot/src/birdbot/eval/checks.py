@@ -7,6 +7,7 @@ must not invent a different one). Loose token matching keeps false positives low
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from birdbot.eval.scenarios import EvalScenario
@@ -40,7 +41,10 @@ def check_story(story: dict[str, Any], scenario: EvalScenario) -> list[str]:
     # 4. region grounding (S13): the Story must not name a region other than the given one.
     given = scenario.snapshot.get("region", "")
     full = (narrative + " " + story_text)
-    other_regions = [r for r in _OTHER_REGION_TOKENS if r in full and r not in given.lower()]
+    other_regions = [
+        r for r in _OTHER_REGION_TOKENS
+        if re.search(rf"\b{r}\b", full) and r not in given.lower()
+    ]
     if other_regions:
         issues.append(f"region:hallucinated:{','.join(other_regions)}")
 

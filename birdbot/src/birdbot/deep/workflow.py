@@ -63,7 +63,8 @@ async def run_deep_stage(
                 conn,
                 tenant_id=tenant_id,
                 topic=callback_topic,
-                payload={"workflow_id": workflow_id, "story": story},
+                payload={"workflow_id": workflow_id, "story": story,
+                         "attribution": snapshot.get("attribution")},
                 dedupe_key=workflow_id,
             )
         return story

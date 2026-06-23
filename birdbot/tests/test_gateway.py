@@ -153,6 +153,19 @@ async def test_routing_error_fails_fast_not_as_provider_error():
 
 
 @pytest.mark.asyncio
+async def test_missing_usage_metadata_surfaces_degraded_alert():
+    tel, al, q = ListTelemetrySink(), ListAlertSink(), _FakeQuota(allow=True)
+    no_usage = _FakeCompletion(response={"choices": [{"message": {"content": "hi"}}]})  # no usage
+    gw = _gateway(router=_FakeRouter(_ENTRY), quota=q, completion=no_usage, telemetry=tel, alerts=al)
+
+    result = await gw.complete(envelope=_ENVELOPE, logical_model="deep-reasoning",
+                               messages=[], skill="deep")
+
+    assert result.tokens == 0 and result.cost_usd == 0.0  # cost can't be computed
+    assert any(a.detail.get("reason") == "no_usage_metadata" for a in al.alerts)  # surfaced
+
+
+@pytest.mark.asyncio
 async def test_timeout_becomes_provider_call_error():
     tel, al, q = ListTelemetrySink(), ListAlertSink(), _FakeQuota(allow=True)
     timeout = _FakeCompletion(raises=asyncio.TimeoutError())

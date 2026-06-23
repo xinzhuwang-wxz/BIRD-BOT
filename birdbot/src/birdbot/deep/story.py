@@ -59,11 +59,13 @@ def build_story_prompt(snapshot: Mapping[str, Any]) -> str:
     rarity = snapshot.get("rarity", {})
     region = snapshot.get("region")
     evidence = snapshot.get("evidence", {})
+    attribution = snapshot.get("attribution")
     return (
         f"{STORY_SKILL}\n"
         f"Region (given, do not infer): {region}\n"
         f"Candidates: {candidates}\n"
         f"Local rarity: {rarity}\n"
-        f"Evidence: {evidence}\n"
+        + (f"Data source to credit: {attribution}\n" if attribution else "")
+        + f"Evidence: {evidence}\n"
         "Return ONLY a JSON object with keys: behavior, rarity_narrative, story.\n"
     )

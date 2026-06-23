@@ -115,7 +115,13 @@ class LLMGateway:
 
             latency = (self._clock() - t0) * 1000
             data = resp.model_dump() if hasattr(resp, "model_dump") else resp
-            tokens = int((data.get("usage") or {}).get("total_tokens", 0))
+            usage = data.get("usage") or {}
+            if not usage:  # cached/streaming responses can omit usage -> cost would be wrong
+                self._alerts.emit(
+                    Alert(DEGRADED, {"model": logical_model, "provider": entry.backend,
+                                     "reason": "no_usage_metadata"})
+                )
+            tokens = int(usage.get("total_tokens", 0))
             cost = entry.pricing_per_mtok * tokens / 1_000_000
             self._telemetry.record(
                 self._record(envelope, logical_model, entry, tokens=tokens, cost=cost,

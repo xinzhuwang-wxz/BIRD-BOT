@@ -34,6 +34,15 @@ class Assembly:
     deep_worker: RelayWorker  # fast->deep auto-trigger (queued-events sweep)
     advance: Callable[..., Awaitable[dict[str, Any]]]  # drive one deep stage manually
 
+    async def start(self) -> None:
+        """Start the background workers — a process entrypoint calls this after serving app."""
+        await self.relay_worker.start()
+        await self.deep_worker.start()
+
+    async def stop(self) -> None:
+        await self.relay_worker.stop()
+        await self.deep_worker.stop()
+
 
 def assemble(
     *,

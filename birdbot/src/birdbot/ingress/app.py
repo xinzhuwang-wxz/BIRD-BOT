@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException
 
-from birdbot.ingress.schema import BirdEvent
+from birdbot.ingress.schema import BirdEvent, ChatRequest
 
 
-def create_app(ingest) -> FastAPI:
+def create_app(ingest, chat=None) -> FastAPI:
     """``ingest`` is a FastStageIngest-like object (submit + job_status); kept untyped to
-    avoid an ingress<->pipeline import cycle."""
+    avoid an ingress<->pipeline import cycle. ``chat`` is an optional NatureChatHandler-like
+    object (handle); when present, /v0/chat is mounted for the open interaction layer."""
     app = FastAPI(title="BirdBot Ingress", version="0")
 
     @app.post("/v0/events", status_code=202)
@@ -38,5 +39,13 @@ def create_app(ingest) -> FastAPI:
         if status is None:
             raise HTTPException(status_code=404, detail="job not found")
         return {"job_id": job_id, "status": status}
+
+    if chat is not None:
+        @app.post("/v0/chat")
+        async def post_chat(req: ChatRequest) -> dict:
+            reply = await chat.handle(
+                envelope=req.envelope, prompt=req.prompt, region=req.region
+            )
+            return {"reply": reply}
 
     return app

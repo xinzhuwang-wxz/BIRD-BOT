@@ -52,3 +52,19 @@ class BirdEvent(BaseModel):
     @property
     def session_key(self) -> str:
         return self.envelope.session_key
+
+
+class ChatRequest(BaseModel):
+    """One Nature Chat turn submitted to /v0/chat (open interaction layer)."""
+
+    tenant_id: str = Field(min_length=1)
+    user_id: str | None = None
+    device_id: str | None = None
+    prompt: str = Field(min_length=1)
+    region: str = "US"  # eBird region code, supplied by the platform (never LLM-inferred)
+
+    @property
+    def envelope(self) -> TenantEnvelope:
+        return TenantEnvelope(
+            tenant_id=self.tenant_id, user_id=self.user_id, device_id=self.device_id
+        )

@@ -13,7 +13,8 @@ from collections.abc import Collection
 from birdbot.router.region import is_destination_allowed
 from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
 
-# Backends present in config history but with no implementation in meta-nanobot.
+# Backends LiteLLM could name but that we do not implement/authorize — rejected explicitly
+# rather than silently falling through to the OpenAI-compatible path.
 UNIMPLEMENTED_BACKENDS = frozenset({"bedrock", "azure_openai", "github_copilot", "openai_codex"})
 
 

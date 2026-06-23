@@ -1,7 +1,8 @@
-"""BirdBot application layer — cloud AI observation atop the vendored nanobot kernel.
+"""BirdBot — self-hosted cloud AI agent service for smart bird feeders (ADR-0013).
 
-BirdBot is the independent application package; the kernel lives in ``nanobot/`` as a
-controlled vendor fork (ADR-0001). Domain code stays here and never lands inside
-``nanobot/agent/tools/``; it extends the kernel through documented seams
-(entry_points tools, hooks, config) rather than by editing the kernel.
+An independent application package, no kernel dependency (the vendored nanobot kernel was
+removed; ADR-0013 supersedes ADR-0001). Agent runtime = ``birdbot.runtime.AgentRuntime`` (a
+thin LLM→tool_calls→execute loop); provider gateway = LiteLLM via
+``birdbot.runtime.gateway.LLMGateway``; tools = ``birdbot.runtime.tool.Tool``; structured
+output validation = jsonschema.
 """

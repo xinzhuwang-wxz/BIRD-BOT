@@ -4,9 +4,9 @@
 
 ## Language
 
-**内核 (Kernel)**:
-vendored 在 `nanobot/` 的蒸馏版 nanobot agent 核心，作为受控 vendor fork 维护（见 [ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）。
-_Avoid_: nanobot（指代不清时）、framework、base
+**运行时 (Runtime)**:
+自建薄 agent 运行时 `birdbot.runtime.AgentRuntime`（`LLM→tool_calls→execute→loop`）+ LiteLLM provider 网关。早期 vendored nanobot 内核已移除（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md) supersedes [ADR-0001](docs/adr/0001-vendored-nanobot-fork.md)）。
+_Avoid_: 内核 / kernel（已无）、nanobot（已移除）
 
 **应用层 (Application Layer)**:
 内核之上承载全部 BirdBot 领域逻辑的代码（独立 `birdbot/` 包），如识别适配、Bird Context、Workflow Runtime、多租户。
@@ -105,8 +105,8 @@ _Avoid_: eBird 客户端（指代整体时）、数据源（不加限定）
 _Avoid_: 频率（指标签时）
 
 **LLM 网关 / Model Router**:
-业务只引用逻辑模型名/能力档（`fast-vision`/`deep-reasoning`/`structured-json`）→ 经能力注册表（vision/structured-output/context-window/pricing/**驻留区域/合规标签**）解析到内核 Provider（built_on Provider/Preset/Fallback）。调用前断言能力（不发会被静默降级的请求）、调用后 JSON schema 校验 + 三类回退（常规/context_window/content_policy）；EU 区域硬约束（[ADR-0007](docs/adr/0007-eu-data-routing.md)）；**显式拒绝** 4 个无实现 backend（防内核 factory 静默 fallthrough 到 OpenAI-compat）。
-_Avoid_: 模型路由（泛指）、LiteLLM
+业务只引用逻辑模型名/能力档（`fast-vision`/`deep-reasoning`/`structured-json`）→ 经能力注册表（vision/structured-output/context-window/pricing/**驻留区域/合规标签**）解析到真实供应商。调用前断言能力（不发会被静默降级的请求）、调用后 JSON schema 校验；EU 区域硬约束（[ADR-0007](docs/adr/0007-eu-data-routing.md)）；**显式拒绝** 4 个无实现 backend（防静默 fallthrough 到 OpenAI-compat）。provider 一律经 LiteLLM，且都过 **受治理调用 LLMGateway**（[ADR-0014](docs/adr/0014-llm-gateway-governed-call.md)）。
+_Avoid_: 模型路由（泛指）
 
 **观测层 / 埋点 (Observability)**:
 day-one 一等公民（[ADR-0006](docs/adr/0006-observability-first-class.md)）：每次 LLM/工具/外部 API 调用记 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟 · 数据流向`（支撑 chargeback/审计）；`(tenant,skill,model)` 配额 **fair-share**（单租户失控只限自己）；降级/熔断/额度耗尽 **surface 告警、绝不静默**；经 **受治理调用 (LLMGateway)** 直接 record/emit，无 hook 吞错层（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)）。
@@ -126,7 +126,7 @@ _Avoid_: provider 网关（那是 LiteLLM）、completion（指裸调用时）
 _Avoid_: pipeline（泛指时）、流程
 
 **开放交互层 / Nature Chat**:
-与确定性主链路（Workflow）相对的开放对话层（[ADR-0011](docs/adr/0011-agent-boundary-provider-backend.md)）：用户自由提问（「它是常客吗」「为什么此时出现」），LLM 经 nanobot **agent loop**（`process_direct` 多轮 + 工具集 + 会话记忆 + subagent）**自主选工具**多步作答。MVP 后置，spike 已验证机制。与主链路**共用 nanobot 基底、两种用法**。
+与确定性主链路（Workflow）相对的开放对话层：用户自由提问（「它是常客吗」「为什么此时出现」），LLM 经自建 **AgentRuntime**（多轮工具循环，受 LLMGateway 治理）**自主选工具**多步作答（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)）。MVP 后置，spike + 真冒烟已验证；差生产 HTTP 入口（P1）。
 _Avoid_: 聊天、对话（泛指时）
 
 **Skill**:

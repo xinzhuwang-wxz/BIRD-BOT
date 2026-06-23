@@ -1,7 +1,7 @@
 """Integration tests for the daily digest (needs DB; skips without DSN).
 
 Aggregate the day's events, enqueue the digest via the outbox (idempotent per
-tenant+date), and wire nanobot's CronService (set on_job + start — the D5 gap)."""
+tenant+date), and wire the self-hosted CronService (set on_job + start)."""
 from __future__ import annotations
 
 import json

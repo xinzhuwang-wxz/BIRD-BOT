@@ -11,6 +11,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from birdbot.ingress.app import create_app
+from birdbot.ingress.schema import BirdEvent
 from birdbot.ingress.store import EventStore
 from birdbot.pipeline.orchestrate import FastStageIngest, advance_deep
 from birdbot.recognition.adapter import RecognitionAdapter
@@ -82,3 +83,45 @@ async def test_ingress_to_deep_stage_end_to_end(app_db, admin_conn):
     assert await relay(admin_conn, deliver) == 1
     assert delivered[0]["payload"]["story"] == _STORY
     assert delivered[0]["payload"]["workflow_id"] == "A:d1:e1"
+
+
+@pytest.mark.asyncio
+async def test_advance_deep_weaves_local_rarity_from_context_service(app_db):
+    """G2: advance_deep calls the Bird Context Service (commercial=True) and weaves the
+    local rarity labels into the Story prompt — no longer the hardcoded empty rarity."""
+    from birdbot.context.models import BirdContext
+    from birdbot.pipeline.orchestrate import advance_deep
+
+    store = EventStore(app_db)
+    await store.accept(
+        BirdEvent(tenant_id="A", device_id="d1", event_id="e2",
+                  top_k=[{"label": "robin", "score": 0.9}])
+    )
+    await store.attach_fast_snapshot(
+        tenant_id="A", device_id="d1", event_id="e2",
+        snapshot={"candidates": [["robin", 0.9]], "best_frame": None},
+    )
+
+    class _FakeContext:
+        async def get_context(self, *, region, date, commercial):
+            assert commercial is True  # paid path -> eBird/iNat intercepted pre-license (ADR-0005)
+            return BirdContext(
+                region=region, date=date, frequencies={"robin": 0.01},
+                labels={"robin": "rare"}, source="taxonomy", attribution="src",
+                degraded=False, diagnostics={},
+            )
+
+    captured: dict = {}
+
+    class _CaptureStoryLLM:
+        async def generate(self, *, prompt, frames, envelope, region="US"):
+            captured["prompt"] = prompt
+            return {"behavior": "feeding", "rarity_narrative": "x", "story": "y"}
+
+    await advance_deep(
+        db=app_db, runtime=WorkflowRuntime(app_db), outbox=Outbox(app_db),
+        story_llm=_CaptureStoryLLM(), tenant_id="A", device_id="d1", event_id="e2",
+        region="US-CA", context_service=_FakeContext(),
+    )
+
+    assert "robin" in captured["prompt"] and "rare" in captured["prompt"]  # rarity woven in

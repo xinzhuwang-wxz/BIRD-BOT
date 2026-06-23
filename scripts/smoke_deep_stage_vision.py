@@ -37,10 +37,17 @@ async def main() -> None:
     model = os.environ.get("LLM_MODEL", "doubao-seed-2-0-pro-260215")
 
     import httpx
-    from birdbot.deep.llm import OpenAICompatStoryLLM
+    import litellm
+
+    from birdbot.deep.llm import build_story_llm
     from birdbot.deep.story import STORY_SCHEMA, STORY_SKILL
+    from birdbot.observability.alerts import ListAlertSink
+    from birdbot.observability.telemetry import ListTelemetrySink
+    from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
+    from birdbot.router.router import ModelRouter
     from birdbot.router.validate import validate_structured_output
-    from openai import AsyncOpenAI
+    from birdbot.runtime.gateway import LLMGateway
+    from birdbot.tenant.context import TenantEnvelope
 
     image_path = os.environ.get("BIRD_IMAGE_PATH")
     if image_path:
@@ -71,11 +78,31 @@ async def main() -> None:
         "Return ONLY a JSON object with keys: behavior, rarity_narrative, story."
     )
 
-    # Use the production StoryLLM (S12): OpenAI-compatible, vision-capable.
-    client = AsyncOpenAI(api_key=api_key, base_url=api_base)
-    llm = OpenAICompatStoryLLM(client=client, model=model)
+    # Production deep-stage StoryLLM (ADR-0014): GatewayStoryLLM over a governed LLMGateway.
+    async def completion(*, model, messages, **kwargs):
+        return await litellm.acompletion(
+            model=f"openai/{model}", messages=messages,
+            api_base=api_base, api_key=api_key, **kwargs,
+        )
+
+    class _AllowQuota:
+        async def try_acquire(self, key):
+            return True
+
+        async def release(self, key):
+            pass
+
+    router = ModelRouter(CapabilityRegistry([
+        ModelEntry(logical_name="deep-reasoning", backend="openai_compat", model=model,
+                   capabilities=frozenset({Capability.VISION, Capability.STRUCTURED_OUTPUT}),
+                   context_window=128_000, pricing_per_mtok=1.0, residency_region="CN",
+                   compliance_tags=frozenset())]))
+    gateway = LLMGateway(router=router, telemetry=ListTelemetrySink(), alerts=ListAlertSink(),
+                         quota=_AllowQuota(), completion=completion)
+    llm = build_story_llm(gateway=gateway)
     story = await llm.generate(
-        prompt=prompt, frames=[data_url], schema=STORY_SCHEMA, model=model
+        prompt=prompt, frames=[data_url],
+        envelope=TenantEnvelope(tenant_id="dev", device_id="dev"), region="US-CA",
     )
 
     errors = validate_structured_output(story, STORY_SCHEMA)

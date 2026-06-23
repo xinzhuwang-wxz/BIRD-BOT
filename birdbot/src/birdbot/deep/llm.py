@@ -1,18 +1,15 @@
-"""StoryLLM adapters for the deep stage (#9).
+"""StoryLLM adapter for the deep stage (#9): GatewayStoryLLM.
 
-- ``GatewayStoryLLM`` (production, ADR-0014): builds vision messages and parses the JSON;
-  routing / telemetry / quota / cost all happen inside the injected LLMGateway, so the deep
-  stage is governed by construction.
-- ``OpenAICompatStoryLLM``: OpenAI-SDK backed, used by the S14 record/replay httpx transport
-  for CI without a key (its SDK call folds into a governed completion adapter — B2).
-
-Both build the prompt + curated frames (image parts) and parse the JSON answer (json-repair
-tolerates trailing prose). The hard schema contract is enforced by run_deep_stage, not here.
+Builds the prompt + curated frames (image parts) and parses the JSON answer (json-repair
+tolerates trailing prose). Routing / telemetry / quota / cost all happen inside the injected
+LLMGateway (ADR-0014), so the deep stage is governed by construction; the OpenAI-SDK call
+(for S14 record/replay) lives in ``runtime.completion`` as a governed completion adapter. The
+hard schema contract is enforced by run_deep_stage, not here.
 """
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from json_repair import repair_json
@@ -22,38 +19,6 @@ from birdbot.tenant.context import TenantEnvelope
 
 _DEEP_REASONING = "deep-reasoning"
 _REQUIRED_CAPS = frozenset({Capability.VISION, Capability.STRUCTURED_OUTPUT})
-
-
-class OpenAICompatStoryLLM:
-    """StoryLLM backed by an OpenAI-compatible (async) client with vision."""
-
-    def __init__(self, *, client: Any, model: str) -> None:
-        self._client = client
-        self.model = model
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        frames: Sequence[str],
-        schema: Mapping[str, Any],
-        model: str,
-    ) -> dict[str, Any]:
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        for frame in frames:
-            content.append({"type": "image_url", "image_url": {"url": frame}})
-
-        response = await self._client.chat.completions.create(
-            model=self.model or model,
-            messages=[{"role": "user", "content": content}],
-            response_format={"type": "json_object"},
-            max_tokens=800,
-        )
-        raw = response.choices[0].message.content or ""
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return json.loads(repair_json(raw))
 
 
 class GatewayStoryLLM:

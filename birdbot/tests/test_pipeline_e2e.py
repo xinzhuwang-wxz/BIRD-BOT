@@ -15,8 +15,6 @@ from birdbot.ingress.store import EventStore
 from birdbot.pipeline.orchestrate import FastStageIngest, advance_deep
 from birdbot.recognition.adapter import RecognitionAdapter
 from birdbot.recognition.frame_scorer import FrameScorer
-from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
-from birdbot.router.router import ModelRouter
 from birdbot.workflow.outbox import Outbox, relay
 from birdbot.workflow.runtime import WorkflowRuntime
 
@@ -24,28 +22,9 @@ _STORY = {"behavior": "feeding", "rarity_narrative": "common", "story": "A robin
 
 
 class _FakeStoryLLM:
-    async def generate(self, *, prompt, frames, schema, model):
+    async def generate(self, *, prompt, frames, envelope, region="US"):
         self.frames = frames
         return _STORY
-
-
-def _router():
-    return ModelRouter(
-        CapabilityRegistry(
-            [
-                ModelEntry(
-                    logical_name="deep-reasoning",
-                    backend="anthropic",
-                    model="claude",
-                    capabilities=frozenset({Capability.VISION, Capability.STRUCTURED_OUTPUT}),
-                    context_window=200_000,
-                    pricing_per_mtok=1.0,
-                    residency_region="US",
-                    compliance_tags=frozenset({"dpf"}),
-                )
-            ]
-        )
-    )
 
 
 @pytest.mark.asyncio
@@ -81,7 +60,6 @@ async def test_ingress_to_deep_stage_end_to_end(app_db, admin_conn):
         db=app_db,
         runtime=WorkflowRuntime(app_db),
         outbox=Outbox(app_db),
-        router=_router(),
         story_llm=fake_llm,
         tenant_id="A",
         device_id="d1",

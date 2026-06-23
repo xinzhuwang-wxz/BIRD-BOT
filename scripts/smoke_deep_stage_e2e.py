@@ -36,6 +36,9 @@ async def main() -> None:
     from birdbot.db.pool import Database
     from birdbot.deep.llm import build_story_llm
     from birdbot.deep.workflow import run_deep_stage
+    from birdbot.observability.alerts import ListAlertSink
+    from birdbot.observability.telemetry import ListTelemetrySink
+    from birdbot.runtime.gateway import LLMGateway
     from birdbot.ingress.schema import BirdEvent
     from birdbot.ingress.store import EventStore
     from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
@@ -82,7 +85,21 @@ async def main() -> None:
                 api_base=api_base, api_key=api_key, **kwargs,
             )
 
-        story_llm = build_story_llm(router=router, completion=completion, user_region="US")
+        class _AllowQuota:  # smoke: always allow (production uses RedisQuotaLimiter)
+            async def try_acquire(self, key):
+                return True
+
+            async def release(self, key):
+                pass
+
+        gateway = LLMGateway(
+            router=router,
+            telemetry=ListTelemetrySink(),
+            alerts=ListAlertSink(),
+            quota=_AllowQuota(),
+            completion=completion,
+        )
+        story_llm = build_story_llm(gateway=gateway)
 
         data_url = "data:image/jpeg;base64," + base64.b64encode(
             Path(image_path).read_bytes()
@@ -98,7 +115,6 @@ async def main() -> None:
             db=db,
             runtime=WorkflowRuntime(db),
             outbox=Outbox(db),
-            router=router,
             story_llm=story_llm,
             tenant_id="A",
             device_id="d1",

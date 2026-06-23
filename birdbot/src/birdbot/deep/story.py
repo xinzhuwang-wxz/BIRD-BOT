@@ -1,13 +1,16 @@
 """Story generation port + hard output contract + Skill methodology.
 
-The StoryLLM port is a single structured call: prompt + curated frames + schema -> dict.
-STORY_SKILL is the *methodology* (prose, no enforcement); the enforceable contract is
-STORY_SCHEMA, validated in code (workflow), not in the Skill.
+The StoryLLM port is a single structured call: prompt + curated frames + per-request tenant
+envelope -> dict. The call is routed/governed by the LLMGateway the adapter holds (ADR-0014),
+so the port no longer carries the real model. STORY_SKILL is the *methodology* (prose, no
+enforcement); the enforceable contract is STORY_SCHEMA, validated in code (workflow).
 """
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
+
+from birdbot.tenant.context import TenantEnvelope
 
 MAX_FRAMES = 8  # multimodal LLM receives only 3-8 curated frames
 
@@ -40,8 +43,8 @@ class StoryLLM(Protocol):
         *,
         prompt: str,
         frames: Sequence[str],
-        schema: Mapping[str, Any],
-        model: str,
+        envelope: TenantEnvelope,
+        region: str = "US",
     ) -> dict[str, Any]: ...
 
 

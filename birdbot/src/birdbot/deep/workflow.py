@@ -14,13 +14,10 @@ from typing import Any
 
 from birdbot.db.pool import Database
 from birdbot.deep.story import MAX_FRAMES, STORY_SCHEMA, StoryLLM, build_story_prompt
-from birdbot.router.registry import Capability
-from birdbot.router.router import ModelRouter
 from birdbot.router.validate import validate_structured_output
+from birdbot.tenant.context import TenantEnvelope
 from birdbot.workflow.outbox import Outbox
 from birdbot.workflow.runtime import WorkflowRuntime
-
-_REQUIRED_CAPS = frozenset({Capability.STRUCTURED_OUTPUT, Capability.VISION})
 
 
 async def run_deep_stage(
@@ -28,7 +25,6 @@ async def run_deep_stage(
     db: Database,
     runtime: WorkflowRuntime,
     outbox: Outbox,
-    router: ModelRouter,
     story_llm: StoryLLM,
     tenant_id: str,
     device_id: str,
@@ -40,15 +36,12 @@ async def run_deep_stage(
     workflow_id = f"{tenant_id}:{device_id}:{event_id}"
 
     async def story_step() -> dict[str, Any]:
-        entry = router.resolve(
-            "deep-reasoning", required=_REQUIRED_CAPS, user_region=user_region
-        )
         frames = list(snapshot.get("frames", []))[:MAX_FRAMES]
         story = await story_llm.generate(
             prompt=build_story_prompt(snapshot),
             frames=frames,
-            schema=STORY_SCHEMA,
-            model=entry.model,
+            envelope=TenantEnvelope(tenant_id=tenant_id, device_id=device_id),
+            region=user_region,
         )
         # Hard contract enforced in code (not the Skill).
         errors = validate_structured_output(story, STORY_SCHEMA)

@@ -1,0 +1,78 @@
+"""Composition root (ADR-0014): assemble the deployable BirdBot app.
+
+The single place that knows concrete adapters — Database, Model Router, LLMGateway
+(telemetry / alert / quota), the deep-stage StoryLLM, FastStageIngest, the HTTP ingress, and
+the outbox relay worker + HTTP delivery. Everything else sees only seams. Wiring is explicit
+(inject components) so it is testable; thin ``*_from_env`` helpers can layer on top.
+
+``Assembly`` is what a process entrypoint runs: serve ``app`` (ingress), start
+``relay_worker`` (callback delivery), and call ``advance`` to drive the async deep stage.
+"""
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+from birdbot.deep.llm import build_story_llm
+from birdbot.ingress.app import create_app
+from birdbot.ingress.store import EventStore
+from birdbot.recognition.adapter import RecognitionAdapter
+from birdbot.recognition.frame_scorer import FrameScorer
+from birdbot.router.router import ModelRouter
+from birdbot.runtime.gateway import LLMGateway
+from birdbot.workflow.deliver import HttpDeliver
+from birdbot.workflow.worker import RelayWorker, make_outbox_sweep
+
+
+@dataclass(frozen=True)
+class Assembly:
+    app: Any  # FastAPI ingress app
+    gateway: LLMGateway
+    story_llm: Any  # GatewayStoryLLM
+    relay_worker: RelayWorker
+    advance: Callable[..., Awaitable[dict[str, Any]]]  # drive the async deep stage
+
+
+def assemble(
+    *,
+    db: Any,
+    owner_dsn: str,
+    registry: Any,
+    completion: Callable[..., Awaitable[Any]],
+    telemetry: Any,
+    alerts: Any,
+    quota: Any,
+    webhook_url: str,
+    http_client: Any,
+    relay_interval: float = 5.0,
+) -> Assembly:
+    """Wire the governed app from explicit components (the deploy env supplies them)."""
+    from birdbot.pipeline.orchestrate import FastStageIngest, advance_deep
+    from birdbot.workflow.outbox import Outbox
+    from birdbot.workflow.runtime import WorkflowRuntime
+
+    gateway = LLMGateway(
+        router=ModelRouter(registry), telemetry=telemetry, alerts=alerts,
+        quota=quota, completion=completion,
+    )
+    story_llm = build_story_llm(gateway=gateway)
+
+    ingest = FastStageIngest(EventStore(db), RecognitionAdapter(), FrameScorer())
+    app = create_app(ingest)
+
+    runtime = WorkflowRuntime(db)
+    outbox = Outbox(db)
+    deliver = HttpDeliver(webhook_url=webhook_url, client=http_client)
+    relay_worker = RelayWorker(
+        sweep=make_outbox_sweep(owner_dsn=owner_dsn, deliver=deliver), interval=relay_interval
+    )
+
+    async def advance(*, tenant_id: str, device_id: str, event_id: str, region: str) -> dict[str, Any]:
+        return await advance_deep(
+            db=db, runtime=runtime, outbox=outbox, story_llm=story_llm,
+            tenant_id=tenant_id, device_id=device_id, event_id=event_id, region=region,
+        )
+
+    return Assembly(app=app, gateway=gateway, story_llm=story_llm,
+                    relay_worker=relay_worker, advance=advance)

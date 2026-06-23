@@ -99,16 +99,16 @@ async def test_advance_deep_weaves_local_rarity_from_context_service(app_db):
     )
     await store.attach_fast_snapshot(
         tenant_id="A", device_id="d1", event_id="e2",
-        snapshot={"candidates": [["robin", 0.9]], "best_frame": None},
+        snapshot={"candidates": [["sparrow", 0.6], ["robin", 0.5]], "best_frame": None},
     )
 
     class _FakeContext:
         async def get_context(self, *, region, date, commercial):
             assert commercial is True  # paid path -> eBird/iNat intercepted pre-license (ADR-0005)
             return BirdContext(
-                region=region, date=date, frequencies={"robin": 0.01},
-                labels={"robin": "rare"}, source="taxonomy", attribution="src",
-                degraded=False, diagnostics={},
+                region=region, date=date, frequencies={"robin": 9.0, "sparrow": 0.0},
+                labels={"robin": "rare", "sparrow": "common"}, source="taxonomy",
+                attribution="src", degraded=False, diagnostics={},
             )
 
     captured: dict = {}
@@ -124,4 +124,7 @@ async def test_advance_deep_weaves_local_rarity_from_context_service(app_db):
         region="US-CA", context_service=_FakeContext(),
     )
 
-    assert "robin" in captured["prompt"] and "rare" in captured["prompt"]  # rarity woven in
+    prompt = captured["prompt"]
+    assert "rare" in prompt  # local rarity labels woven into the Story
+    # geo/temporal rerank (G2b, ADR-0015): robin's high local frequency lifts it above sparrow
+    assert prompt.index("robin") < prompt.index("sparrow")

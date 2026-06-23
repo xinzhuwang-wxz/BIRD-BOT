@@ -87,7 +87,9 @@ async def advance_deep(
     context_service is provided, local rarity is fetched with commercial=True — so eBird/iNat
     are intercepted pre-license (ADR-0005) and degrade visibly — and woven into the Story.
     """
+    from birdbot.context.rerank import make_geo_temporal_reranker
     from birdbot.deep.workflow import run_deep_stage
+    from birdbot.recognition.types import ScoredCandidate
 
     async with db.tenant_scope(tenant_id) as conn:
         raw = await conn.fetchval(
@@ -96,6 +98,7 @@ async def advance_deep(
             event_id,
         )
     fast = json.loads(raw).get("fast_stage", {})
+    candidates = fast.get("candidates", [])
 
     rarity: dict[str, Any] = {}
     attribution = None
@@ -105,9 +108,17 @@ async def advance_deep(
         )
         rarity = dict(ctx.labels)
         attribution = ctx.attribution
+        # geo/temporal rerank by local frequency (G2b, ADR-0015): the deep stage reuses the
+        # context it already fetched for rarity, so the fast stage stays synchronous.
+        if candidates and ctx.frequencies:
+            reranker = make_geo_temporal_reranker(ctx)
+            reranked = reranker(
+                [ScoredCandidate(label, score) for label, score in candidates], None
+            )
+            candidates = [[c.label, c.score] for c in reranked]
 
     snapshot = {
-        "candidates": fast.get("candidates", []),
+        "candidates": candidates,
         "frames": [fast["best_frame"]] if fast.get("best_frame") else [],
         "rarity": rarity,
         "region": region,

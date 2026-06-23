@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from birdbot.chat.handler import NatureChatHandler
 from birdbot.deep.llm import build_story_llm
 from birdbot.ingress.app import create_app
 from birdbot.ingress.store import EventStore
@@ -27,9 +28,10 @@ from birdbot.workflow.worker import RelayWorker, make_deep_sweep, make_outbox_sw
 
 @dataclass(frozen=True)
 class Assembly:
-    app: Any  # FastAPI ingress app
+    app: Any  # FastAPI ingress app (mounts /v0/events + /v0/chat)
     gateway: LLMGateway
     story_llm: Any  # GatewayStoryLLM
+    chat: Any  # NatureChatHandler (open interaction layer)
     relay_worker: RelayWorker  # callback delivery (outbox sweep)
     deep_worker: RelayWorker  # fast->deep auto-trigger (queued-events sweep)
     advance: Callable[..., Awaitable[dict[str, Any]]]  # drive one deep stage manually
@@ -70,7 +72,8 @@ def assemble(
     story_llm = build_story_llm(gateway=gateway)
 
     ingest = FastStageIngest(EventStore(db), RecognitionAdapter(), FrameScorer())
-    app = create_app(ingest)
+    chat = NatureChatHandler(gateway=gateway, alerts=alerts)
+    app = create_app(ingest, chat=chat)
 
     runtime = WorkflowRuntime(db)
     outbox = Outbox(db)
@@ -90,5 +93,5 @@ def assemble(
         sweep=make_deep_sweep(owner_dsn=owner_dsn, advance=advance), interval=relay_interval
     )
 
-    return Assembly(app=app, gateway=gateway, story_llm=story_llm,
+    return Assembly(app=app, gateway=gateway, story_llm=story_llm, chat=chat,
                     relay_worker=relay_worker, deep_worker=deep_worker, advance=advance)

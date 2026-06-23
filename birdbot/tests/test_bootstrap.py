@@ -50,6 +50,7 @@ def test_assemble_wires_a_governed_deployable_app():
     assert callable(asm.advance)  # async deep-stage entry bound to db/runtime/outbox/story_llm
     assert asm.relay_worker is not None  # callback delivery worker ready to start
     assert asm.deep_worker is not None  # fast->deep auto-trigger worker ready to start
+    assert asm.chat is not None  # Nature Chat handler mounted at /v0/chat
 
 
 @pytest.mark.asyncio

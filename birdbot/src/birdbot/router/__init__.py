@@ -7,8 +7,8 @@ pricing / residency region / compliance tags). It asserts required capabilities 
 calling (so it never sends a request that would be silently downgraded), validates
 structured output after, and enforces the EU data-residency hard constraint (ADR-0007).
 
-It is built ON nanobot's Provider/Preset/Fallback but adds the guardrails the kernel
-lacks — notably explicitly rejecting the four unimplemented backends (bedrock,
-azure_openai, github_copilot, openai_codex) that the kernel factory would otherwise let
-fall through silently to the OpenAI-compatible path.
+Provider resolution runs through the LiteLLM gateway (ADR-0013/0014); the Model Router adds
+the guardrails — notably explicitly rejecting the four unimplemented backends (bedrock,
+azure_openai, github_copilot, openai_codex) rather than letting them fall through silently to
+the OpenAI-compatible path.
 """

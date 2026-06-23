@@ -6,9 +6,8 @@ structured evidence (never the raw video) and produces behavior / rarity narrati
 Story. The result is persisted and a callback is enqueued in the same transaction via the
 transactional outbox (#5).
 
-Note (basis evaluation): the deep stage is a fixed-control-flow workflow with a single
-structured LLM call per step — the kernel agent loop's autonomous tool-selection is not
-exercised here, so the LLM is a simple injected StoryLLM port, not a full process_direct
-agent loop. Hard contracts (tool allow-list / output schema / location precision) live in
-this code, NOT in the Skill (Skills have no enforcement power — D10).
+Note: the deep stage is a fixed-control-flow workflow with a single structured LLM call per
+step — AgentRuntime's autonomous tool-selection is NOT used here; the LLM is a simple injected
+StoryLLM port (governed by the LLMGateway). Hard contracts (output schema / location
+precision) live in this code, NOT in the Skill (Skills have no enforcement power).
 """

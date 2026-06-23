@@ -1,5 +1,7 @@
 # nanobot 基座作为受控 vendor fork
 
+> Status: **Superseded by [ADR-0013](0013-self-hosted-runtime-litellm.md)** —— M6 已移除 vendored nanobot 内核，BirdBot 转自建 AgentRuntime + LiteLLM。本文件保留为历史决策记录（当时选择 vendor fork 起步的理由）。
+
 BirdBot 把蒸馏版 nanobot 内核整包 vendored 在仓库根（`nanobot/`，包名 `nanobot-ai`）。
 
 **决定**：将其作为**受控 vendor fork** 维护，而非外部固定版本依赖。默认优先通过应用层扩展（entry_points Tool / Skills / Hook / config / MCP，领域代码放独立 `birdbot/` 包，不落进 `nanobot/agent/tools/`）；但**保留在确有需要时直接修改内核的自由**（例如补结构化 BirdEvent 入口、增加状态机阶段级 hook、修复 `flush_all`/`fsync` 耐久缺口）。

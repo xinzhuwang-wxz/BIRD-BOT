@@ -8,6 +8,7 @@ persist the Story, and deliver the callback via the outbox.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from birdbot.ingress.schema import BirdEvent
@@ -16,6 +17,10 @@ from birdbot.pipeline.convert import candidates_from_topk, frames_from_media
 from birdbot.recognition.adapter import RecognitionAdapter
 from birdbot.recognition.fast_stage import run_fast_stage
 from birdbot.recognition.frame_scorer import FrameScorer
+
+
+def _utc_date() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 class FastStageIngest:
@@ -72,11 +77,15 @@ async def advance_deep(
     device_id: str,
     event_id: str,
     region: str,
+    context_service: Any = None,
+    date: str | None = None,
 ) -> dict[str, Any]:
     """Read the fast-stage snapshot and advance the deep stage to a persisted Story.
 
     region is supplied deterministically (device location, S13), never inferred by the LLM.
-    Routing/governance now live in the LLMGateway the story_llm holds (ADR-0014).
+    Routing/governance live in the LLMGateway the story_llm holds (ADR-0014). When a
+    context_service is provided, local rarity is fetched with commercial=True — so eBird/iNat
+    are intercepted pre-license (ADR-0005) and degrade visibly — and woven into the Story.
     """
     from birdbot.deep.workflow import run_deep_stage
 
@@ -87,11 +96,22 @@ async def advance_deep(
             event_id,
         )
     fast = json.loads(raw).get("fast_stage", {})
+
+    rarity: dict[str, Any] = {}
+    attribution = None
+    if context_service is not None:
+        ctx = await context_service.get_context(
+            region=region, date=date or _utc_date(), commercial=True
+        )
+        rarity = dict(ctx.labels)
+        attribution = ctx.attribution
+
     snapshot = {
         "candidates": fast.get("candidates", []),
         "frames": [fast["best_frame"]] if fast.get("best_frame") else [],
-        "rarity": {},
+        "rarity": rarity,
         "region": region,
+        "attribution": attribution,
     }
     return await run_deep_stage(
         db=db,

@@ -45,6 +45,7 @@ def assemble(
     quota: Any,
     webhook_url: str,
     http_client: Any,
+    context_service: Any = None,
     relay_interval: float = 5.0,
 ) -> Assembly:
     """Wire the governed app from explicit components (the deploy env supplies them)."""
@@ -72,6 +73,7 @@ def assemble(
         return await advance_deep(
             db=db, runtime=runtime, outbox=outbox, story_llm=story_llm,
             tenant_id=tenant_id, device_id=device_id, event_id=event_id, region=region,
+            context_service=context_service,
         )
 
     return Assembly(app=app, gateway=gateway, story_llm=story_llm,

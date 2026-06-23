@@ -23,6 +23,7 @@ async def main() -> None:
     import litellm
 
     from birdbot.chat.registry import build_nature_chat_registry
+    from birdbot.chat.tools import dict_rarity, dict_visits
     from birdbot.observability.alerts import ListAlertSink
     from birdbot.observability.telemetry import ListTelemetrySink
     from birdbot.router.registry import Capability, CapabilityRegistry, ModelEntry
@@ -65,8 +66,8 @@ async def main() -> None:
     registry = build_nature_chat_registry(
         envelope=envelope,
         region="US-CA",
-        history={"blue tit": {"visits_30d": 8}, "robin": {"visits_30d": 1}},
-        rarity={"blue tit": "common", "robin": "rare"},
+        visits=dict_visits({"blue tit": {"visits_30d": 8}, "robin": {"visits_30d": 1}}),
+        rarity=dict_rarity({"blue tit": "common", "robin": "rare"}),
     )
     history = registry.get("device_history")
     context = registry.get("bird_context")

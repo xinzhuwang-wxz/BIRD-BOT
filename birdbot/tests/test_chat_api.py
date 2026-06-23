@@ -28,9 +28,7 @@ class _FakeGateway:
 @pytest.mark.asyncio
 async def test_handler_runs_governed_runtime_with_bound_context():
     gw = _FakeGateway()
-    handler = NatureChatHandler(gateway=gw, alerts=ListAlertSink(),
-                                history={"blue tit": {"visits_30d": 8}},
-                                rarity={"blue tit": "common"})
+    handler = NatureChatHandler(gateway=gw, alerts=ListAlertSink())  # no backends -> lookups degrade
     envelope = TenantEnvelope(tenant_id="A", device_id="d1")
 
     reply = await handler.handle(envelope=envelope, prompt="is the blue tit a regular?",
@@ -64,6 +62,42 @@ async def test_chat_endpoint_not_mounted_without_handler():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         resp = await client.post("/v0/chat", json={"tenant_id": "A", "prompt": "x"})
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_handler_device_history_queries_events(app_db):
+    """The device_history tool, driven by the handler, really queries the events table."""
+    from birdbot.ingress.schema import BirdEvent
+    from birdbot.ingress.store import EventStore
+
+    store = EventStore(app_db)
+    await store.accept(BirdEvent(tenant_id="A", device_id="d1", event_id="e1",
+                                 top_k=[{"label": "robin", "score": 0.9}]))
+
+    class _ToolCallGateway:
+        def __init__(self):
+            self.n = 0
+
+        async def complete(self, *, envelope, logical_model, messages, skill, region="US", **kw):
+            self.n += 1
+            if self.n == 1:  # first turn: ask the runtime to call device_history
+                return GatewayResult(
+                    raw={"choices": [{"message": {"content": "", "tool_calls": [
+                        {"id": "c1", "type": "function",
+                         "function": {"name": "device_history", "arguments": '{"species": "robin"}'}}
+                    ]}}]}, provider="x", tokens=1, cost_usd=0.0, latency_ms=1.0)
+            # second turn: the tool observation (a real events query result) is now in messages
+            self.tool_obs = [m for m in messages if m.get("role") == "tool"]
+            return GatewayResult(raw={"choices": [{"message": {"content": "robin: a regular"}}]},
+                                 provider="x", tokens=1, cost_usd=0.0, latency_ms=1.0)
+
+    gw = _ToolCallGateway()
+    handler = NatureChatHandler(gateway=gw, alerts=ListAlertSink(), db=app_db)
+    reply = await handler.handle(envelope=TenantEnvelope(tenant_id="A", device_id="d1"),
+                                 prompt="how often does the robin visit?", region="US-CA")
+
+    assert reply == "robin: a regular"
+    assert '"visits_30d": 1' in gw.tool_obs[0]["content"]  # the events query found robin once
 
 
 @pytest.mark.asyncio

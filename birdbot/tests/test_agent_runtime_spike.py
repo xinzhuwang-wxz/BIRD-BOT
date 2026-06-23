@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from birdbot.chat.tools import BirdContextTool, DeviceHistoryTool
+from birdbot.chat.tools import BirdContextTool, DeviceHistoryTool, dict_rarity, dict_visits
 from birdbot.observability.alerts import DEGRADED, ListAlertSink
 from birdbot.router.validate import FailureClass
 from birdbot.runtime.agent import AgentRuntime
@@ -56,8 +56,8 @@ async def test_runtime_drives_multi_turn_autonomous_tools():
         _msg(content="Yes — a regular: 8 visits in 30 days, and locally common."),
     ])
     runtime = AgentRuntime(gateway=gw, alerts=ListAlertSink())
-    history = DeviceHistoryTool({"blue tit": {"visits_30d": 8}}, device_id="d1")
-    context = BirdContextTool({"blue tit": "common"}, region="US-CA")
+    history = DeviceHistoryTool(dict_visits({"blue tit": {"visits_30d": 8}}), device_id="d1")
+    context = BirdContextTool(dict_rarity({"blue tit": "common"}), region="US-CA")
 
     answer = await runtime.run(prompt="Is this blue tit a regular?",
                                tools=[history, context], envelope=_ENV, region="US-CA")
@@ -83,7 +83,7 @@ async def test_runtime_degrades_and_alerts_on_max_iterations():
     looping = FakeGateway([_msg(tool_calls=[_tc("c", "device_history", {"species": "x"})])])
     alerts = ListAlertSink()
     runtime = AgentRuntime(gateway=looping, alerts=alerts, max_iterations=3)
-    history = DeviceHistoryTool({}, device_id="d1")
+    history = DeviceHistoryTool(dict_visits({}), device_id="d1")
 
     out = await runtime.run(prompt="loop", tools=[history], envelope=_ENV)
 

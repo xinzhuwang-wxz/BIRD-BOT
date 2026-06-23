@@ -72,7 +72,7 @@ def assemble(
     story_llm = build_story_llm(gateway=gateway)
 
     ingest = FastStageIngest(EventStore(db), RecognitionAdapter(), FrameScorer())
-    chat = NatureChatHandler(gateway=gateway, alerts=alerts)
+    chat = NatureChatHandler(gateway=gateway, alerts=alerts, db=db, context_service=context_service)
     app = create_app(ingest, chat=chat)
 
     runtime = WorkflowRuntime(db)

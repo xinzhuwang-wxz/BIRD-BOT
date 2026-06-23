@@ -109,8 +109,12 @@ _Avoid_: 频率（指标签时）
 _Avoid_: 模型路由（泛指）、LiteLLM
 
 **观测层 / 埋点 (Observability)**:
-day-one 一等公民（[ADR-0006](docs/adr/0006-observability-first-class.md)）：每次 LLM/工具/外部 API 调用记 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟 · 数据流向`（支撑 chargeback/审计）；`(tenant,skill,model)` 配额 **fair-share**（单租户失控只限自己）；降级/熔断/额度耗尽 **surface 告警、绝不静默**；观测 Hook `reraise=True`（翻转内核 `reraise=False` 默认吞错）。
+day-one 一等公民（[ADR-0006](docs/adr/0006-observability-first-class.md)）：每次 LLM/工具/外部 API 调用记 `tenant/user/device · 逻辑模型→真实供应商 · 回退链 · 降级 · 数据源模式 · token/cost/延迟 · 数据流向`（支撑 chargeback/审计）；`(tenant,skill,model)` 配额 **fair-share**（单租户失控只限自己）；降级/熔断/额度耗尽 **surface 告警、绝不静默**；经 **受治理调用 (LLMGateway)** 直接 record/emit，无 hook 吞错层（[ADR-0013](docs/adr/0013-self-hosted-runtime-litellm.md)）。
 _Avoid_: 日志、监控（泛指时）
+
+**受治理调用 / LLMGateway**:
+每一次 LLM 往返（completion-level）的唯一受治理出口（架构候选 ①，兑现 [ADR-0006](docs/adr/0006-observability-first-class.md)/[ADR-0004](docs/adr/0004-tenant-isolation-pool-bridge.md) 的「定义但未接线」）。把 `配额 try_acquire（(tenant,skill,逻辑模型)、routing 前拦）→ Model Router 解析（区域/能力/拒 unimpl）→ 计时 → provider 调用 → cost/token → telemetry 记 CallRecord → 失败 classify+alert` 收进小接口 `complete(envelope, logical_model, messages, *, skill, required_caps, region) → GatewayResult`。失败**抛异常**（QuotaExhausted / ProviderCallError(failure_class) / 配置错 fail-fast），绝不静默；**不内置 fallback**（沿链重试是其外层装饰）。AgentRuntime 与 StoryLLM 的「裸 completion」都改为经它，后处理（tool_calls / JSON parse）留调用方。仅治 LLM；context 数据源（eBird/iNat）的受治出口仍是 Bird Context Service。
+_Avoid_: provider 网关（那是 LiteLLM）、completion（指裸调用时）
 
 ### 能力分层（idea §4 四分法）
 

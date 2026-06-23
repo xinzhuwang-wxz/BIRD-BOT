@@ -63,3 +63,67 @@ async def test_relay_worker_sweeps_then_sleeps_until_stopped():
     await worker._task
 
     assert calls["sweeps"] == 1  # one sweep ran before the loop stopped
+
+
+class _FakeConn:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def fetch(self, query, *args):
+        return self._rows
+
+    async def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_deep_sweep_drives_queued_events_with_region_from_location():
+    import json
+
+    from birdbot.workflow.worker import make_deep_sweep
+
+    rows = [
+        {"tenant_id": "A", "device_id": "d1", "event_id": "e1",
+         "payload": json.dumps({"fast_stage": {}, "location": {"region": "US-CA"}})},
+        {"tenant_id": "B", "device_id": "d2", "event_id": "e2",
+         "payload": json.dumps({"fast_stage": {}})},  # no location -> default region
+    ]
+    driven = []
+
+    async def advance(*, tenant_id, device_id, event_id, region):
+        driven.append({"event": event_id, "region": region})
+
+    async def connect(_dsn):
+        return _FakeConn(rows)
+
+    sweep = make_deep_sweep(owner_dsn="x", advance=advance, connect=connect)
+    assert await sweep() == 2
+    assert driven[0]["region"] == "US-CA"  # IoT-supplied region code
+    assert driven[1]["region"] == "US"  # default when no location supplied
+
+
+@pytest.mark.asyncio
+async def test_deep_sweep_skips_failed_event_keeps_going():
+    import json
+
+    from birdbot.workflow.worker import make_deep_sweep
+
+    rows = [
+        {"tenant_id": "A", "device_id": "d1", "event_id": "bad",
+         "payload": json.dumps({"fast_stage": {}, "location": {"region": "US"}})},
+        {"tenant_id": "A", "device_id": "d1", "event_id": "good",
+         "payload": json.dumps({"fast_stage": {}, "location": {"region": "US"}})},
+    ]
+    driven = []
+
+    async def advance(*, tenant_id, device_id, event_id, region):
+        if event_id == "bad":
+            raise RuntimeError("boom")  # leaves it queued for next sweep
+        driven.append(event_id)
+
+    async def connect(_dsn):
+        return _FakeConn(rows)
+
+    sweep = make_deep_sweep(owner_dsn="x", advance=advance, connect=connect)
+    assert await sweep() == 1  # only "good" driven; "bad" skipped (idempotent retry next sweep)
+    assert driven == ["good"]

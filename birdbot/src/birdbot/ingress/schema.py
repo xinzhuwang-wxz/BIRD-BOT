@@ -20,12 +20,14 @@ class SpeciesCandidate(BaseModel):
 
 
 class CoarseLocation(BaseModel):
-    """Coarse location as submitted. Persistence-side privacy degradation (raw ->
-    grid -> city) is a later slice (#12); v0 accepts and stores as-is."""
+    """Coarse location as submitted. Persistence-side privacy degradation lives in
+    privacy/location.py. ``region`` is the eBird region code (e.g. US-CA) the IoT platform
+    supplies — BirdBot does not geocode lat/lon; the device/platform knows where it is."""
 
     lat: float | None = None
     lon: float | None = None
     grid: str | None = None
+    region: str | None = None
 
 
 class BirdEvent(BaseModel):

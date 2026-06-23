@@ -8,6 +8,7 @@ injectable for deterministic tests.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -29,6 +30,48 @@ def make_outbox_sweep(
         conn = await connect(owner_dsn)
         try:
             return await relay(conn, deliver, limit=limit)
+        finally:
+            await conn.close()
+
+    return sweep
+
+
+def make_deep_sweep(
+    *,
+    owner_dsn: str,
+    advance: Callable[..., Awaitable[Any]],
+    limit: int = 50,
+    connect: Callable[..., Awaitable[Any]] = asyncpg.connect,
+) -> Callable[[], Awaitable[int]]:
+    """Build a sweep that drives queued events (fast done, deep not yet) through ``advance``.
+
+    Reads on an owner connection (all tenants). region comes from the event's submitted
+    location (IoT-supplied eBird region code). A per-event failure leaves the event queued
+    for the next sweep — advance is idempotent via workflow replay.
+    """
+
+    async def sweep() -> int:
+        conn = await connect(owner_dsn)
+        try:
+            rows = await conn.fetch(
+                "SELECT tenant_id, device_id, event_id, payload FROM events "
+                "WHERE status = 'queued' AND payload ? 'fast_stage' "
+                "ORDER BY id LIMIT $1",
+                limit,
+            )
+            driven = 0
+            for row in rows:
+                payload = json.loads(row["payload"])
+                region = (payload.get("location") or {}).get("region") or "US"
+                try:
+                    await advance(
+                        tenant_id=row["tenant_id"], device_id=row["device_id"],
+                        event_id=row["event_id"], region=region,
+                    )
+                    driven += 1
+                except Exception:
+                    continue  # leave queued for the next sweep (advance is idempotent)
+            return driven
         finally:
             await conn.close()
 

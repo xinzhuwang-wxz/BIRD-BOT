@@ -65,18 +65,17 @@ async def test_run_daily_digest_is_idempotent(app_db):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_wires_on_job_and_starts(app_db, tmp_path):
-    from nanobot.cron.service import CronService
+async def test_scheduler_wires_on_job_and_starts(app_db):
+    from birdbot.runtime.cron import CronService
 
-    cron = CronService(store_path=tmp_path / "cron.json")
-    assert cron.on_job is None  # kernel leaves it unwired (D5)
+    cron = CronService()
+    assert cron.on_job is None  # unwired until the scheduler attaches
 
     scheduler = DailyDigestScheduler(cron, app_db, Outbox(app_db))
     assert cron.on_job is not None  # now wired
 
     try:
         await scheduler.start()
-        assert cron._running is True  # explicitly started (kernel app never does)
+        assert cron._running is True
     finally:
-        if cron._timer_task is not None:
-            cron._timer_task.cancel()
+        await cron.stop()

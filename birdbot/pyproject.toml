@@ -13,6 +13,7 @@ dependencies = [
     "redis>=5.0,<6.0",              # Redis-backed quota limiter (S16, ADR-0004)
     "litellm>=1.50,<2.0",           # LLM provider gateway (ADR-0013); AgentRuntime + Model Router backend
     "jsonschema>=4.20,<5.0",        # structured-output validation (ADR-0013); replaces kernel Schema
+    "croniter>=2.0,<7.0",           # self-hosted Cron trigger (ADR-0013/M5); replaces kernel CronService
 ]
 
 [project.optional-dependencies]

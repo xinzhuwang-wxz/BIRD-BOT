@@ -22,7 +22,7 @@ from birdbot.recognition.frame_scorer import FrameScorer
 from birdbot.router.router import ModelRouter
 from birdbot.runtime.gateway import LLMGateway
 from birdbot.workflow.deliver import HttpDeliver
-from birdbot.workflow.worker import RelayWorker, make_outbox_sweep
+from birdbot.workflow.worker import RelayWorker, make_deep_sweep, make_outbox_sweep
 
 
 @dataclass(frozen=True)
@@ -30,8 +30,9 @@ class Assembly:
     app: Any  # FastAPI ingress app
     gateway: LLMGateway
     story_llm: Any  # GatewayStoryLLM
-    relay_worker: RelayWorker
-    advance: Callable[..., Awaitable[dict[str, Any]]]  # drive the async deep stage
+    relay_worker: RelayWorker  # callback delivery (outbox sweep)
+    deep_worker: RelayWorker  # fast->deep auto-trigger (queued-events sweep)
+    advance: Callable[..., Awaitable[dict[str, Any]]]  # drive one deep stage manually
 
 
 def assemble(
@@ -76,5 +77,9 @@ def assemble(
             context_service=context_service,
         )
 
+    deep_worker = RelayWorker(
+        sweep=make_deep_sweep(owner_dsn=owner_dsn, advance=advance), interval=relay_interval
+    )
+
     return Assembly(app=app, gateway=gateway, story_llm=story_llm,
-                    relay_worker=relay_worker, advance=advance)
+                    relay_worker=relay_worker, deep_worker=deep_worker, advance=advance)

@@ -49,6 +49,7 @@ def test_assemble_wires_a_governed_deployable_app():
     assert isinstance(asm.story_llm, GatewayStoryLLM)  # deep stage runs on the gateway
     assert callable(asm.advance)  # async deep-stage entry bound to db/runtime/outbox/story_llm
     assert asm.relay_worker is not None  # callback delivery worker ready to start
+    assert asm.deep_worker is not None  # fast->deep auto-trigger worker ready to start
 
 
 @pytest.mark.asyncio

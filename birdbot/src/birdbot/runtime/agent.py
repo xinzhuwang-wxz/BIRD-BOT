@@ -66,7 +66,11 @@ class AgentRuntime:
                 return self._degraded
 
             data = result.raw.model_dump() if hasattr(result.raw, "model_dump") else result.raw
-            message = data["choices"][0]["message"]
+            choices = data.get("choices") or []
+            if not choices:
+                self._alerts.emit(Alert(DEGRADED, {"skill": self._skill, "reason": "no_choices"}))
+                return self._degraded
+            message = choices[0].get("message") or {}
             tool_calls = message.get("tool_calls")
             if not tool_calls:
                 return message.get("content") or ""

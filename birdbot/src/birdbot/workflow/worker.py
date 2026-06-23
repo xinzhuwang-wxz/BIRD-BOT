@@ -100,11 +100,20 @@ class RelayWorker:
 
     async def _run(self) -> None:
         while self._running:
-            await self._sweep()
+            try:
+                await self._sweep()
+            except Exception:
+                # an infrastructure failure (e.g. connect) must not kill the loop; per-item
+                # failures are already handled inside the sweep. Next tick retries.
+                pass
             await self._sleep(self._interval)
 
     async def stop(self) -> None:
         self._running = False
         if self._task is not None:
             self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
             self._task = None

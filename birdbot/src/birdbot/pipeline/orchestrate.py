@@ -97,6 +97,8 @@ async def advance_deep(
             device_id,
             event_id,
         )
+    if raw is None:
+        raise ValueError(f"deep stage: event not found ({device_id}/{event_id})")
     fast = json.loads(raw).get("fast_stage", {})
     candidates = fast.get("candidates", [])
 

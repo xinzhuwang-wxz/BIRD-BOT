@@ -143,3 +143,15 @@ async def test_runtime_degrades_on_gateway_failure():
     out = await runtime.run(prompt="x", tools=[], envelope=_ENV)
 
     assert out == runtime._degraded  # human line; the gateway already surfaced the alert
+
+
+@pytest.mark.asyncio
+async def test_runtime_degrades_on_empty_choices():
+    gw = FakeGateway([{"choices": []}])  # provider returned a response with no choices
+    alerts = ListAlertSink()
+    runtime = AgentRuntime(gateway=gw, alerts=alerts)
+
+    out = await runtime.run(prompt="x", tools=[], envelope=_ENV)
+
+    assert out == runtime._degraded  # not an IndexError crash
+    assert alerts.alerts[-1].detail["reason"] == "no_choices"

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BirdBot — Ops Console</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  .cols { grid-template-columns: 1fr 1fr; align-items: start; }
+  @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
+  .bars { display: flex; flex-direction: column; gap: 9px; }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; font-size: 12.5px; }
+  .bar { height: 10px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .alert { border-left: 3px solid var(--warn); padding: 7px 11px; background: var(--panel-2);
+    border-radius: 0 8px 8px 0; font-size: 12.5px; }
+  .alert.quota_exhausted { border-color: var(--bad); }
+  .alert.source_switch { border-color: var(--seasonal); }
+  .alert.degraded { border-color: var(--bad); }
+  .alert .k { font-family: ui-monospace, monospace; font-weight: 700; font-size: 11px; }
+  .legend { font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<script src="/shared.js"></script>
+<script>BB.mountNav("console");</script>
+
+<div class="wrap">
+  <h1>🏢 Vendor Ops Console</h1>
+  <p class="lead">What the feeder vendor sees. Every LLM round-trip is governed by construction
+    (quota → route → telemetry → cost, ADR-0014) and every degradation, quota exhaustion or
+    eBird-compliance interception is surfaced — never silent (ADR-0006 / ADR-0005).</p>
+
+  <div class="panel" style="margin-bottom:16px">
+    <div class="kpis" id="kpis"></div>
+  </div>
+
+  <div class="grid cols" style="margin-bottom:16px">
+    <div class="panel">
+      <h2>Governed LLM calls <span class="legend">— logical → real provider</span></h2>
+      <div class="sub">Live telemetry: tenant · device · tokens · cost · latency · data-flow region.</div>
+      <div class="feed" id="tele"><div class="empty">Waiting for traffic… fire sightings from the Device Simulator.</div></div>
+    </div>
+    <div class="grid" style="gap:16px">
+      <div class="panel">
+        <h2>Surfaced alerts <span class="legend">— never silent</span></h2>
+        <div class="sub">Degradation · quota exhaustion · data-source switch / interception.</div>
+        <div class="feed" id="alerts" style="max-height:200px"><div class="empty">No alerts.</div></div>
+      </div>
+      <div class="panel">
+        <h2>Cost by tenant <span class="legend">— chargeback</span></h2>
+        <div class="bars" id="costBars"><div class="empty">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid cols">
+    <div class="panel">
+      <h2>Model routing table <span class="legend">— ADR-0007 residency</span></h2>
+      <div class="sub">Logical model → backends in fallback order, with residency, compliance tags & price.</div>
+      <table id="routing"><thead><tr><th>logical</th><th>#</th><th>backend / model</th><th>residency</th><th>tags</th><th>$/Mtok</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="panel">
+      <h2>eBird compliance (ADR-0005)</h2>
+      <div class="sub">Commercial use of unlicensed sources is intercepted; rarity degrades visibly.</div>
+      <div id="compliance"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function kpi(k, v, accent) {
+  return `<div class="kpi"><div class="v ${accent?'accent':''}">${v}</div><div class="k">${k}</div></div>`;
+}
+async function refresh() {
+  const m = await BB.api("/api/metrics");
+  document.getElementById("kpis").innerHTML = [
+    kpi("LLM calls", m.calls, true),
+    kpi("Total cost", BB.money(m.cost_usd), true),
+    kpi("Tokens", m.tokens.toLocaleString()),
+    kpi("Avg latency", m.avg_latency_ms + "ms"),
+    kpi("Degraded calls", m.degraded),
+    kpi("Alerts", m.alert_total),
+    kpi("Active tenants", m.tenants_active),
+    kpi("Observations", m.observations),
+  ].join("");
+
+  const tenants = Object.entries(m.cost_by_tenant).sort((a,b)=>b[1]-a[1]);
+  const max = Math.max(...tenants.map(t=>t[1]), 1e-9);
+  document.getElementById("costBars").innerHTML = tenants.length ? tenants.map(([t,c]) =>
+    `<div class="bar-row"><span class="mono">${BB.esc(t)}</span><div class="bar"><i style="width:${Math.max(4,100*c/max)}%"></i></div><span>${BB.money(c)}</span></div>`).join("") : `<div class="empty">—</div>`;
+
+  // compliance summary from alerts + provider/region mix
+  const srcSwitch = m.alerts.source_switch || 0;
+  document.getElementById("compliance").innerHTML = `
+    <div class="row" style="gap:18px">
+      <div><div class="v" style="font-size:22px;font-weight:700;color:var(--seasonal)">${srcSwitch}</div><div class="k small muted">source switches / interceptions</div></div>
+      <div><div class="v" style="font-size:22px;font-weight:700">${Object.keys(m.by_region).join(", ")||"—"}</div><div class="k small muted">data-flow regions in use</div></div>
+    </div>
+    <p class="small muted" style="margin:12px 0 0">Pre-license, eBird & iNaturalist are blocked for commercial use and rarity falls back to the key-less taxonomy baseline (or to <em>unknown</em> under <code>eBird-only</code>) — each switch raises a <code>source_switch</code> alert above.</p>`;
+}
+
+async function loadRouting() {
+  const rows = await BB.api("/api/routing");
+  document.querySelector("#routing tbody").innerHTML = rows.map(r =>
+    `<tr><td class="mono">${r.logical_name}</td><td>${r.order}</td>
+      <td><span class="pill">${r.backend}</span> ${BB.esc(r.model)}</td>
+      <td>${r.residency}</td><td class="muted">${r.compliance_tags.join(",")||"—"}</td>
+      <td>$${r.pricing_per_mtok}</td></tr>`).join("");
+}
+
+const teleBox = document.getElementById("tele");
+const alertsBox = document.getElementById("alerts");
+function teleRow(r) {
+  if (teleBox.querySelector(".empty")) teleBox.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "tele flash" + (r.degraded ? "" : "");
+  el.innerHTML = `<span class="mono">${BB.esc(r.tenant_id)}<span class="muted">/${BB.esc(r.device_id||'–')}</span></span>
+    <span class="mono">${r.logical_model} <span class="arrow">→</span> ${r.provider} <span class="muted">[${r.data_flow_region}]</span>${r.degraded?' <span class="badge deg">degraded</span>':''}</span>
+    <span class="mono muted">${r.tokens}t · ${BB.money(r.cost_usd)} · ${r.latency_ms}ms</span>`;
+  teleBox.insertBefore(el, teleBox.firstChild);
+  while (teleBox.children.length > 80) teleBox.removeChild(teleBox.lastChild);
+}
+function alertRow(a) {
+  if (alertsBox.querySelector(".empty")) alertsBox.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = `alert ${a.kind} flash`;
+  const detail = Object.entries(a.detail || {}).filter(([k])=>!["mode","commercial"].includes(k))
+    .map(([k,v]) => `${k}=${Array.isArray(v)?v.join("/"):v}`).join(" · ");
+  el.innerHTML = `<span class="k">${a.kind}</span> <span class="muted">${BB.esc(detail)}</span>`;
+  alertsBox.insertBefore(el, alertsBox.firstChild);
+  while (alertsBox.children.length > 50) alertsBox.removeChild(alertsBox.lastChild);
+}
+
+BB.sse((ev) => {
+  if (ev.type === "telemetry") { teleRow(ev.record); refresh(); }
+  else if (ev.type === "alert") { alertRow(ev); refresh(); }
+});
+
+loadRouting(); refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

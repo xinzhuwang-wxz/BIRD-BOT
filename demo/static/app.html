@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BirdBot — NatureFeed</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  .cols { grid-template-columns: 1fr 380px; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  .digest { background: linear-gradient(135deg, rgba(45,212,191,.12), rgba(56,189,248,.08));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .digest .d-date { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .digest .d-sum { font-size: 15px; margin-top: 4px; }
+  .digest .d-stats { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
+  .digest .d-stats div b { font-size: 18px; } .digest .d-stats div span { color: var(--muted); font-size: 11.5px; }
+  .card { display: flex; gap: 14px; padding: 16px; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card .cn { font-weight: 700; font-size: 16px; }
+  .card .sci { color: var(--muted); font-style: italic; font-size: 12.5px; }
+  .card .behavior { color: var(--text); margin: 7px 0 4px; font-size: 13.5px; }
+  .card .story { color: #c7d2dd; font-size: 13.5px; }
+  .card .foot { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; color: var(--muted); font-size: 11.5px; }
+  .card .foot .k { color: var(--text); font-weight: 600; }
+  .frame-pill { font-size: 10.5px; }
+  /* chat */
+  .chat { display: flex; flex-direction: column; height: 560px; }
+  .msgs { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 9px; padding-right: 4px; }
+  .msg { max-width: 85%; padding: 9px 12px; border-radius: 13px; font-size: 13.5px; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #052e2b; border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg.bot.typing { color: var(--muted); font-style: italic; }
+  .chat .compose { display: flex; gap: 8px; margin-top: 10px; }
+  .chat .compose input { flex: 1; }
+  .chat .compose button { width: auto; }
+  .suggest { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .suggest .chip { font-size: 11.5px; }
+</style>
+</head>
+<body>
+<script src="/shared.js"></script>
+<script>BB.mountNav("app");</script>
+
+<div class="wrap">
+  <div class="hdr" style="margin-bottom:14px">
+    <div>
+      <h1 style="margin-bottom:2px">📱 NatureFeed</h1>
+      <div class="muted small" id="placeline">—</div>
+    </div>
+    <div style="width:280px"><select id="device"></select></div>
+  </div>
+
+  <div class="grid cols">
+    <div class="grid" style="gap:14px">
+      <div class="digest" id="digest"></div>
+      <div class="grid" id="feed" style="gap:12px"></div>
+    </div>
+
+    <div class="panel chat">
+      <h2>Ask about your feeder</h2>
+      <div class="sub">Nature Chat — grounded in <em>this</em> device's history & local rarity.</div>
+      <div class="msgs" id="msgs"></div>
+      <div class="suggest" id="suggest"></div>
+      <div class="compose">
+        <input id="chatInput" type="text" placeholder="e.g. how often does the cardinal visit?" />
+        <button class="primary" onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let DEVICES = [], current = null;
+
+async function boot() {
+  DEVICES = await BB.api("/api/fleet");
+  const sel = document.getElementById("device");
+  sel.innerHTML = DEVICES.map(d => `<option value="${d.device_id}">${BB.esc(d.label)}</option>`).join("");
+  sel.onchange = () => selectDevice(sel.value);
+  await selectDevice(DEVICES[0].device_id);
+}
+
+async function selectDevice(id) {
+  current = DEVICES.find(d => d.device_id === id);
+  document.getElementById("placeline").textContent = `${current.place} · region ${current.region}`;
+  document.getElementById("msgs").innerHTML = "";
+  greet();
+  await Promise.all([loadFeed(), loadDigest()]);
+}
+
+async function loadDigest() {
+  const d = await BB.api(`/api/digest?device_id=${current.device_id}`);
+  const el = document.getElementById("digest");
+  if (!d.count) {
+    el.innerHTML = `<div class="d-date">Today</div><div class="d-sum">${BB.esc(d.summary)}</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="d-date">Today's digest</div>
+    <div class="d-sum">${BB.esc(d.summary)}</div>
+    <div class="d-stats">
+      <div><b>${d.count}</b><br><span>visits</span></div>
+      <div><b>${d.distinct_species}</b><br><span>species</span></div>
+      <div><b>${BB.esc(d.rarest.common)}</b><br><span>highlight · ${d.rarest.rarity}</span></div>
+    </div>`;
+}
+
+async function loadFeed() {
+  const obs = await BB.api(`/api/observations?device_id=${current.device_id}`);
+  const feed = document.getElementById("feed");
+  if (!obs.length) { feed.innerHTML = `<div class="panel empty">No sightings yet. Open the Device Simulator and send one for this feeder.</div>`; return; }
+  feed.innerHTML = obs.map(cardHTML).join("");
+}
+
+function cardHTML(o) {
+  const seen = o.visits_30d > 0 ? `seen <span class="k">${o.visits_30d}×</span> in 30d` : `<span class="k">first sighting</span>`;
+  const attr = o.attribution ? ` · ${BB.esc(o.attribution)}` : (o.rarity === "unknown" ? ` · rarity unavailable` : "");
+  return `<div class="panel card">
+    ${BB.avatar(o.species, 58)}
+    <div class="body">
+      <div class="top">
+        <span class="cn">${BB.esc(o.species.common)}</span>
+        <span class="sci">${BB.esc(o.species.scientific)}</span>
+        ${BB.rarityBadge(o.rarity)} ${BB.decisionBadge(o.decision)}
+      </div>
+      <div class="behavior">${BB.esc(o.behavior)}</div>
+      <div class="story">${BB.esc(o.story)}</div>
+      <div class="foot">
+        <span>${seen}</span>
+        ${o.best_frame ? `<span class="pill frame-pill">★ best frame kept</span>` : ""}
+        <span>${o.frame_count} frames${attr}</span>
+        <span>${BB.timeAgo(o.ts)}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+// chat
+const SUGGEST = ["how often does the cardinal visit?", "is the painted bunting rare here?",
+                 "tell me about the blue jay", "what's the goldfinch situation?"];
+function greet() {
+  addMsg("bot", `Hi! I'm watching ${current.label}. Ask me which birds drop by, how often, or how rare they are here.`);
+  document.getElementById("suggest").innerHTML = SUGGEST.map(s =>
+    `<span class="chip" onclick="quick(this)">${BB.esc(s)}</span>`).join("");
+}
+function quick(el) { document.getElementById("chatInput").value = el.textContent; sendChat(); }
+function addMsg(role, text) {
+  const m = document.createElement("div");
+  m.className = `msg ${role}`; m.textContent = text;
+  const box = document.getElementById("msgs");
+  box.appendChild(m); box.scrollTop = box.scrollHeight;
+  return m;
+}
+async function sendChat() {
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim(); if (!text) return;
+  input.value = ""; addMsg("user", text);
+  const typing = addMsg("bot", "…thinking"); typing.classList.add("typing");
+  try {
+    const r = await BB.post("/api/chat", { device_id: current.device_id, prompt: text });
+    typing.remove(); addMsg("bot", r.reply);
+  } catch (e) { typing.remove(); addMsg("bot", "Sorry — " + e.message); }
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && document.activeElement.id === "chatInput") sendChat();
+});
+
+// live: a new sighting on the current feeder pops in + refreshes digest
+BB.sse((ev) => {
+  if (ev.type === "observation" && current &&
+      ev.observation.device_id === current.device_id) {
+    const feed = document.getElementById("feed");
+    if (feed.querySelector(".empty")) feed.innerHTML = "";
+    feed.insertAdjacentHTML("afterbegin", cardHTML(ev.observation));
+    feed.firstElementChild.classList.add("flash");
+    loadDigest();
+  }
+});
+
+boot();
+</script>
+</body>
+</html>

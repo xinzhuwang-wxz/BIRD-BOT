@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BirdBot — Product Showcase</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  .hero { padding: 18px 0 26px; }
+  .hero h1 { font-size: 34px; }
+  .roles { grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); }
+  .role { display: block; padding: 22px; transition: transform .12s, border-color .12s; }
+  .role:hover { transform: translateY(-3px); border-color: var(--accent); text-decoration: none; }
+  .role .ico { font-size: 30px; }
+  .role h3 { margin: 10px 0 6px; font-size: 18px; color: var(--text); }
+  .role p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .pipe { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; margin-top: 8px; }
+  .pstep { flex: 1; min-width: 150px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin: 4px; position: relative; }
+  .pstep b { font-size: 13px; } .pstep span { color: var(--muted); font-size: 12px; }
+  .pstep .n { color: var(--accent); font-family: ui-monospace, monospace; font-size: 11px; }
+  .ticker { font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--muted); min-height: 20px; }
+</style>
+</head>
+<body>
+<script src="/shared.js"></script>
+<script>BB.mountNav("home");</script>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>One backyard feeder. Three points of view.</h1>
+    <p class="lead">BirdBot is the cloud AI layer that turns a smart feeder's photos, on-device
+      detections, time and place into a living nature story — <em>what bird is this, what's it
+      doing, why now, is it a regular, which frame to keep, what happened today</em>. This showcase
+      runs the <strong>real</strong> recognition, rarity, governance and chat components end-to-end,
+      offline. Pick a viewpoint.</p>
+
+    <div class="grid roles">
+      <a class="panel role" href="/device.html">
+        <div class="ico">🛰</div>
+        <h3>Device Simulator</h3>
+        <p>Stand in for the IoT feeder. Fire a sighting and watch the raw <code>BirdEvent</code>
+          flow through recognition → rarity → story in real time.</p>
+      </a>
+      <a class="panel role" href="/app.html">
+        <div class="ico">📱</div>
+        <h3>NatureFeed App</h3>
+        <p>What the feeder owner sees: a timeline of warm, accurate bird stories, a daily digest,
+          and a chat that actually knows this device's history.</p>
+      </a>
+      <a class="panel role" href="/console.html">
+        <div class="ico">🏢</div>
+        <h3>Ops Console</h3>
+        <p>What the vendor sees: every governed LLM call with cost & latency, surfaced
+          degradations, eBird compliance interception, and the model routing table.</p>
+      </a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="hdr">
+      <div><h2>How a sighting becomes a story</h2>
+        <div class="sub">The same pipeline this showcase drives — real components, offline fakes only for the LLM, eBird/iNat and Postgres.</div></div>
+      <button class="primary" style="width:auto" onclick="fire()">⚡ Fire a random sighting</button>
+    </div>
+    <div class="pipe">
+      <div class="pstep"><div class="n">01</div><b>Ingest</b><br><span>IoT platform POSTs a versioned BirdEvent (device, Top-K, place)</span></div>
+      <div class="pstep"><div class="n">02</div><b>Fast stage</b><br><span>calibrate → geo/temporal rerank → accept / rollup / escalate + best frame</span></div>
+      <div class="pstep"><div class="n">03</div><b>Local rarity</b><br><span>BirdContextService — common / seasonal / rare, source-mode governed</span></div>
+      <div class="pstep"><div class="n">04</div><b>Deep story</b><br><span>governed multimodal LLM → behavior + rarity narrative + story</span></div>
+      <div class="pstep"><div class="n">05</div><b>Surface</b><br><span>card in the app · governed telemetry in the console</span></div>
+    </div>
+    <div class="ticker" id="ticker">Ready. Fire a sighting, or open a viewpoint above.</div>
+  </div>
+</div>
+
+<script>
+  const ticker = document.getElementById("ticker");
+  BB.sse((ev) => {
+    if (ev.type === "observation") {
+      const o = ev.observation;
+      ticker.textContent = `🐦 ${o.species.common} @ ${o.device_label} — ${o.decision}, ${o.rarity}`;
+    } else if (ev.type === "telemetry") {
+      const r = ev.record;
+      ticker.textContent = `⚙ ${r.logical_model} → ${r.provider} · ${r.tokens} tok · ${BB.money(r.cost_usd)} · ${r.latency_ms}ms`;
+    }
+  });
+  async function fire() {
+    ticker.textContent = "firing…";
+    try { const o = await BB.post("/api/sim/random"); }
+    catch (e) { ticker.textContent = "error: " + e.message; }
+  }
+</script>
+</body>
+</html>

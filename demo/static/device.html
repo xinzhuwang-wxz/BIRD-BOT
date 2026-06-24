@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BirdBot — Device Simulator</title>
+<link rel="stylesheet" href="/shared.css" />
+<style>
+  .cols { grid-template-columns: 360px 1fr; align-items: start; }
+  @media (max-width: 820px) { .cols { grid-template-columns: 1fr; } }
+  .trace { display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow: auto; }
+  .ev { border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; font-size: 12.5px;
+    background: var(--panel-2); display: grid; grid-template-columns: 84px 1fr; gap: 10px; }
+  .ev.flash { animation: flash .8s ease; }
+  .ev .tag { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; }
+  .ev.ingest .tag { color: var(--accent-2); }
+  .ev.recognition .tag { color: var(--good); }
+  .ev.context .tag { color: var(--seasonal); }
+  .ev.story .tag, .ev.observation .tag { color: var(--accent); }
+  .ev .t { color: var(--muted); font-size: 11px; }
+  .scn-hint { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 16px; }
+</style>
+</head>
+<body>
+<script src="/shared.js"></script>
+<script>BB.mountNav("device");</script>
+
+<div class="wrap">
+  <h1>🛰 Device Simulator</h1>
+  <p class="lead">Play the part of the smart feeder's IoT platform. Configure a sighting and POST it;
+    BirdBot's real pipeline runs and you watch every stage land. This is the data source the other
+    two faces consume.</p>
+
+  <div class="grid cols">
+    <div class="panel">
+      <h2>Compose a sighting</h2>
+      <div class="sub">It becomes a versioned <code>BirdEvent</code> on <code>POST /v0/events</code>.</div>
+
+      <label class="field">Feeder (device + tenant + place)</label>
+      <select id="device"></select>
+
+      <label class="field">Scenario</label>
+      <select id="scenario"></select>
+      <div class="scn-hint" id="scnHint"></div>
+
+      <label class="field">Rarity data-source mode (ADR-0005)</label>
+      <div class="toggle-row" id="modeChips">
+        <span class="chip on" data-mode="auto">auto</span>
+        <span class="chip" data-mode="ebird-only">eBird only</span>
+        <span class="chip" data-mode="non-ebird-only">non-eBird</span>
+      </div>
+
+      <label class="field">eBird commercial license</label>
+      <div class="toggle-row">
+        <span class="chip" id="licChip" data-on="false">🔒 not licensed (eBird intercepted)</span>
+      </div>
+
+      <div style="margin-top:18px" class="row">
+        <button class="primary" onclick="send()">📡 Send sighting</button>
+        <button class="ghost" onclick="burst()">🎲 ×5 burst</button>
+      </div>
+      <div class="scn-hint" id="status"></div>
+    </div>
+
+    <div class="grid" style="gap:16px">
+      <div class="panel">
+        <h2>Live pipeline trace</h2>
+        <div class="sub">Stage events stream over SSE as the backend processes each sighting.</div>
+        <div class="trace" id="trace"><div class="empty">No events yet — send a sighting.</div></div>
+      </div>
+      <div class="panel">
+        <h2>Last BirdEvent sent</h2>
+        <div class="sub">The exact JSON body an IoT platform would POST.</div>
+        <pre class="json" id="lastEvent">—</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let DEVICES = [], SCENARIOS = {}, mode = "auto";
+
+async function boot() {
+  DEVICES = await BB.api("/api/fleet");
+  const scn = await BB.api("/api/scenarios");
+  scn.forEach(s => SCENARIOS[s.key] = s);
+  const dsel = document.getElementById("device");
+  dsel.innerHTML = DEVICES.map(d =>
+    `<option value="${d.device_id}">${BB.esc(d.label)} · ${BB.esc(d.place)} (${d.region})</option>`).join("");
+  dsel.onchange = fillScenarios;
+  fillScenarios();
+}
+function fillScenarios() {
+  const d = DEVICES.find(x => x.device_id === document.getElementById("device").value);
+  const ssel = document.getElementById("scenario");
+  ssel.innerHTML = `<option value="">🎲 random for this feeder</option>` +
+    d.scenarios.map(k => `<option value="${k}">${BB.esc(SCENARIOS[k]?.title || k)}</option>`).join("");
+  ssel.onchange = showHint;
+  showHint();
+}
+function showHint() {
+  const k = document.getElementById("scenario").value;
+  const s = SCENARIOS[k];
+  document.getElementById("scnHint").textContent =
+    s ? `On-device read should → ${s.expect}` : "A random scenario from this feeder's repertoire.";
+}
+
+document.getElementById("modeChips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip"); if (!chip) return;
+  document.querySelectorAll("#modeChips .chip").forEach(c => c.classList.remove("on"));
+  chip.classList.add("on"); mode = chip.dataset.mode;
+});
+const licChip = document.getElementById("licChip");
+licChip.addEventListener("click", () => {
+  const on = licChip.dataset.on === "true" ? false : true;
+  licChip.dataset.on = String(on);
+  licChip.classList.toggle("on", on);
+  licChip.textContent = on ? "🔓 licensed (eBird allowed)" : "🔒 not licensed (eBird intercepted)";
+});
+
+async function send() {
+  const body = {
+    device_id: document.getElementById("device").value,
+    scenario: document.getElementById("scenario").value || undefined,
+    source_mode: mode,
+    ebird_licensed: licChip.dataset.on === "true",
+  };
+  const status = document.getElementById("status");
+  status.textContent = "sending…";
+  try {
+    const o = await BB.post("/api/sim/event", body);
+    status.textContent = `✓ ${o.species.common} — ${o.decision} (${o.rarity})`;
+  } catch (e) { status.textContent = "✗ " + e.message; }
+}
+async function burst() {
+  for (let i = 0; i < 5; i++) { await send(); await new Promise(r => setTimeout(r, 350)); }
+}
+
+const trace = document.getElementById("trace");
+function addEv(cls, tag, html) {
+  if (trace.querySelector(".empty")) trace.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = `ev ${cls} flash`;
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML = `<div><div class="tag">${tag}</div><div class="t">${t}</div></div><div>${html}</div>`;
+  trace.insertBefore(el, trace.firstChild);
+  while (trace.children.length > 60) trace.removeChild(trace.lastChild);
+}
+
+BB.sse((ev) => {
+  if (ev.type === "pipeline" && ev.stage === "ingest") {
+    document.getElementById("lastEvent").textContent = JSON.stringify(ev.event, null, 2);
+    const tk = (ev.event.top_k || []).map(c => `${c.label} ${c.score}`).join(", ");
+    addEv("ingest", "INGEST", `<code>${ev.event_id}</code> on <b>${ev.device_id}</b><br><span class="muted">top-k: ${BB.esc(tk)}</span>`);
+  } else if (ev.type === "pipeline" && ev.stage === "recognition") {
+    addEv("recognition", "RECOG", `${BB.decisionBadge(ev.decision)} <b>${BB.esc(ev.identity)}</b> · conf ${ev.confidence}<br><span class="muted">${BB.esc(ev.reason)} · best frame ${ev.best_frame ? "✓" : "—"}</span>`);
+  } else if (ev.type === "context") {
+    const d = ev.diag;
+    const bits = [`mode <b>${d.mode}</b>`, d.source_used ? `source <b>${d.source_used}</b>` : "no source"];
+    if (d.blocked) bits.push(`<span style="color:var(--bad)">blocked: ${d.blocked.join(", ")}</span>`);
+    if (d.degraded) bits.push(`<span style="color:var(--warn)">degraded${d.degraded_reason ? " ("+d.degraded_reason+")" : ""}</span>`);
+    addEv("context", "RARITY", bits.join(" · "));
+  } else if (ev.type === "observation") {
+    const o = ev.observation;
+    addEv("observation", "STORY", `${BB.rarityBadge(o.rarity)} <b>${BB.esc(o.species.common)}</b><br><span class="muted">${BB.esc(o.behavior)}</span>`);
+  }
+});
+
+boot();
+</script>
+</body>
+</html>
